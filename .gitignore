@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+biolit_autominer.egg-info/
+.DS_Store
+*.db
+*.xlsx
+.env
