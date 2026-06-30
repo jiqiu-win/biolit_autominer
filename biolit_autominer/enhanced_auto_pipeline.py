@@ -1,44 +1,80 @@
+from pathlib import Path
+
 from .article_database import ArticleDatabase
-from .pubmed_scraper import PubMedScraper
+from .config import config
 from .incremental_sync import IncrementalSync
+from .incremental_update_manager import IncrementalUpdateManager
+from .pubmed_scraper import PubMedScraper
+from .update_report import UpdateReportWriter
+
 
 class EnhancedAutoPipeline:
-    def __init__(self, email, api_key=None, gemini_project_id=None, output_dir=None):
-        self.email = email
-        self.api_key = api_key
-        self.gemini_project_id = gemini_project_id
-        self.output_dir = output_dir or "auto_pipeline_output"
-        
-        self.db = ArticleDatabase(f"{self.output_dir}/articles.db")
+    """Main orchestrator for PubMed scraping and incremental updates."""
+
+    def __init__(self, email=None, api_key=None, gemini_project_id=None, output_dir=None):
+        self.email = email or config.NCBI_EMAIL
+        self.api_key = api_key or config.NCBI_API_KEY
+        self.gemini_project_id = gemini_project_id or config.GEMINI_PROJECT_ID
+        self.output_dir = Path(output_dir or config.OUTPUT_DIR)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        self.db = ArticleDatabase(self.output_dir / "articles.db")
         self.scraper = PubMedScraper()
-        self.sync = IncrementalSync(email, api_key)
-    
-    def full_workflow(self, search_query):
-        print("Starting workflow...")
-        
-        # Step 1: Get existing PMIDs
-        existing_pmids = self.db.get_existing_pmids()
-        print(f"Existing articles: {len(existing_pmids)}")
-        
-        # Step 2: Search for new articles
-        new_pmids = self.sync.get_new_articles(search_query, existing_pmids)
-        print(f"New articles found: {len(new_pmids)}")
-        
-        # Step 3: Get links for new articles
-        if new_pmids:
-            results = self.scraper.batch_get_links(new_pmids[:10])  # Limit to 10
-            
-            for result in results:
-                self.db.add_article(result['pmid'], {
-                    'has_full_text': result['has_full_text_link'],
-                    'status': 'new'
-                })
-        
-        # Step 4: Export to Excel
-        self.db.export_to_excel(f"{self.output_dir}/articles_database.xlsx")
-        
+        self.sync = IncrementalSync(self.email, self.api_key)
+        self.update_manager = IncrementalUpdateManager(self.db, self.sync, self.scraper)
+
+    def full_workflow(
+        self,
+        search_query=None,
+        max_results=100,
+        process_limit=10,
+        use_incremental=True,
+    ):
+        search_query = search_query or config.DEFAULT_SEARCH_QUERY
+        print(f"Starting workflow: {search_query}")
+
+        if use_incremental:
+            summary = self.update_manager.run_incremental_sync(
+                search_query=search_query,
+                max_results=max_results,
+                process_limit=process_limit,
+            )
+        else:
+            summary = self._simple_workflow(search_query, process_limit)
+
+        self.db.export_to_excel(self.output_dir / "articles_database.xlsx")
+        self.db.export_sync_history(self.output_dir / "sync_history.json")
+
+        report_writer = UpdateReportWriter(output_dir=self.output_dir)
+        report_writer.write_report(
+            sync_summary=summary,
+            db_stats=self.db.get_stats(),
+            db=self.db,
+        )
+
+        self.db.print_stats()
+
         return {
-            'status': 'completed',
-            'new_articles': len(new_pmids),
-            'processed': min(len(new_pmids), 10)
+            "status": "completed",
+            **summary,
+        }
+
+    def _simple_workflow(self, search_query, process_limit):
+        """Original non-incremental path kept for quick tests."""
+        existing_pmids = self.db.get_existing_pmids()
+        new_pmids = self.sync.get_new_articles(search_query, existing_pmids)
+        selected = new_pmids[:process_limit]
+
+        result = self.update_manager.process_articles(selected, status="new")
+        return {
+            "search_query": search_query,
+            "total_found": len(new_pmids),
+            "new_count": len(new_pmids),
+            "modified_count": 0,
+            "unchanged_count": 0,
+            "processed_count": len(result["processed"]),
+            "skipped_count": 0,
+            "time_saved_pct": 0.0,
+            "duration_seconds": 0.0,
+            "errors": result["errors"],
         }

@@ -16,5 +16,7 @@ setup(
         "openpyxl>=3.1.0",
         "google-cloud-aiplatform>=1.38.0",
         "schedule>=1.2.0",
+        "python-dotenv>=1.0.0",
+        "pymupdf>=1.24.0",
     ],
 )
