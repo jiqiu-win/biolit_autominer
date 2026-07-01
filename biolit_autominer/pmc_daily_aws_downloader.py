@@ -5,8 +5,11 @@ import time
 from .article_database import ArticleDatabase
 from .config import config
 from .incremental_sync import IncrementalSync
+from .pmc_aws_fetcher import PMCAwsFetcher
+from .pmc_download_diagnosis import build_run_diagnosis, classify_article_outcome
 from .pmc_staging_manager import PmcStagingManager
 from .pubmed_scraper import FullTextDownloader
+from .update_report import UpdateReportWriter
 
 
 class PmcDailyAwsDownloader:
@@ -81,29 +84,66 @@ class PmcDailyAwsDownloader:
         skipped_no_pmc = []
         abstract_only = []
         errors = []
+        article_diagnoses = []
+
+        aws_reachable = PMCAwsFetcher.check_aws_service_health()
 
         for pmid in to_process:
             pmcid = pmcid_map.get(pmid)
             if not pmcid:
-                skipped_no_pmc.append(pmid)
+                diag = classify_article_outcome(pmid, None, {}, None)
+                skipped_no_pmc.append({"pmid": pmid, **diag})
+                article_diagnoses.append({"pmid": pmid, **diag})
                 continue
 
             metadata = self.sync.fetch_metadata(pmid)
             if metadata.get("error"):
-                errors.append({"pmid": pmid, "error": metadata["error"]})
+                err = metadata["error"]
+                diag = classify_article_outcome(pmid, pmcid, {}, None, error=err)
+                errors.append({"pmid": pmid, "pmcid": pmcid, "error": err, **diag})
+                article_diagnoses.append({"pmid": pmid, "pmcid": pmcid, **diag})
                 continue
 
+            availability = self.downloader.aws_fetcher.check_availability(pmcid)
             result = self.download_pmc_aws_first(pmid, pmcid, metadata)
             if not result.get("saved"):
-                errors.append({"pmid": pmid, "error": result.get("error", "Not saved")})
+                err = result.get("error", "Not saved")
+                diag = classify_article_outcome(pmid, pmcid, availability, None, error=err)
+                errors.append({"pmid": pmid, "pmcid": pmcid, "error": err, **diag})
+                article_diagnoses.append({"pmid": pmid, "pmcid": pmcid, **diag})
                 continue
 
             content_source = result.get("content_source", "")
+            status = "modified" if pmid in modified_set else "new"
+            diag = classify_article_outcome(pmid, pmcid, availability, content_source)
+
             if content_source != "pmc_full_text":
-                abstract_only.append(pmid)
+                record = {
+                    **metadata,
+                    "pmcid": pmcid,
+                    "status": status,
+                    "has_full_text": False,
+                    "source": content_source,
+                    "local_file_path": str(result["path"]),
+                    "local_pdf_path": str(result["pdf_path"]) if result.get("pdf_path") else None,
+                    "content_hash": ArticleDatabase.compute_content_hash(metadata),
+                    "error_message": diag["user_message"],
+                }
+                self.db.add_article(pmid, record)
+                abstract_only.append(
+                    {
+                        "pmid": pmid,
+                        "pmcid": pmcid,
+                        "title": metadata.get("title", ""),
+                        "in_aws_bucket": availability.get("in_aws_bucket"),
+                        **diag,
+                    }
+                )
+                article_diagnoses.append(
+                    {"pmid": pmid, "pmcid": pmcid, "title": metadata.get("title", ""), **diag}
+                )
                 continue
 
-            status = "modified" if pmid in modified_set else "new"
             record = {
                 **metadata,
                 "pmcid": pmcid,
@@ -113,6 +153,7 @@ class PmcDailyAwsDownloader:
                 "local_file_path": str(result["path"]),
                 "local_pdf_path": str(result["pdf_path"]) if result.get("pdf_path") else None,
                 "content_hash": ArticleDatabase.compute_content_hash(metadata),
+                "error_message": None,
             }
             self.db.add_article(pmid, record)
             downloaded.append(
@@ -121,33 +162,63 @@ class PmcDailyAwsDownloader:
                     "pmcid": pmcid,
                     "path": str(result["path"]),
                     "source_method": result.get("source_method"),
+                    **diag,
                 }
+            )
+            article_diagnoses.append(
+                {"pmid": pmid, "pmcid": pmcid, "title": metadata.get("title", ""), **diag}
             )
 
         duration = round(time.time() - start, 2)
+        run_diagnosis = build_run_diagnosis(
+            classification=classification,
+            downloaded=downloaded,
+            abstract_only=abstract_only,
+            skipped_no_pmc=skipped_no_pmc,
+            errors=errors,
+            aws_reachable=aws_reachable,
+            to_process_count=len(to_process),
+        )
+
         summary = {
             "search_query": search_query,
             "total_found": len(classification["all_pmids"]),
+            "new_count": len(classification["new"]),
+            "modified_count": len(classification["modified"]),
+            "unchanged_count": len(classification["unchanged"]),
             "archive": archive_summary,
             "downloaded_count": len(downloaded),
             "abstract_only_count": len(abstract_only),
             "skipped_no_pmc_count": len(skipped_no_pmc),
-            "unchanged_count": len(classification["unchanged"]),
             "duration_seconds": duration,
             "downloaded": downloaded,
             "abstract_only": abstract_only,
             "skipped_no_pmc": skipped_no_pmc,
             "errors": errors,
+            "article_diagnoses": article_diagnoses,
+            "diagnosis": run_diagnosis,
+            "timing": {
+                "scheduled_run_time": config.PMC_DAILY_RUN_TIME,
+                "staging_visible_immediately": True,
+                "archive_after_days": config.PMC_STAGING_AGE_DAYS,
+                "note": (
+                    "New .txt files appear in updated/PMC_full_text_updated/txt/ immediately "
+                    f"after each run. They move to downloaded/pmc_full_text/txt/ after "
+                    f"{config.PMC_STAGING_AGE_DAYS} day(s). "
+                    f"Set cron to {config.PMC_DAILY_RUN_TIME} daily if you want a fixed schedule."
+                ),
+            },
             "staging_dir": str(config.UPDATED_PMC_TXT),
             "archive_dir": str(config.DOWNLOADS_PMC_TXT),
+            "aws_service_reachable": aws_reachable,
         }
 
         self.db.log_sync(
             {
                 "search_query": search_query,
                 "total_found": summary["total_found"],
-                "new_count": len(classification["new"]),
-                "modified_count": len(classification["modified"]),
+                "new_count": summary["new_count"],
+                "modified_count": summary["modified_count"],
                 "unchanged_count": summary["unchanged_count"],
                 "processed_count": len(downloaded),
                 "skipped_count": summary["unchanged_count"],
@@ -157,17 +228,28 @@ class PmcDailyAwsDownloader:
                 if summary["total_found"]
                 else 0.0,
                 "duration_seconds": duration,
-                "notes": (
-                    f"Daily AWS PMC: {len(downloaded)} full-text staged, "
-                    f"{archive_summary['moved_count']} archived."
-                ),
+                "notes": run_diagnosis["user_message"],
             }
         )
 
+        self.db.export_to_excel(config.EXCEL_OUTPUT)
+        self.db.export_sync_history(config.SYNC_HISTORY_PATH)
+
+        report_path = UpdateReportWriter().write_daily_aws_report(
+            summary,
+            db_stats=self.db.get_stats(),
+            db=self.db,
+        )
+        summary["summary_json_path"] = str(report_path)
+        summary["excel_path"] = str(config.EXCEL_OUTPUT)
+
+        print(run_diagnosis["user_message"])
         print(
-            f"Daily AWS PMC download: {len(downloaded)} staged, "
+            f"Daily AWS PMC: {len(downloaded)} staged, "
             f"{archive_summary['moved_count']} archived, "
             f"{len(abstract_only)} abstract-only, "
             f"{len(errors)} errors ({duration}s)"
         )
+        print(f"Summary: {report_path}")
+        print(f"Excel:   {config.EXCEL_OUTPUT}")
         return summary

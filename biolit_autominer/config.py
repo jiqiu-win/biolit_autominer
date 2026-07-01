@@ -88,6 +88,8 @@ class Config:
     # PMC full-text staging: updated/.../txt first, then downloaded/.../txt after N days
     PMC_STAGING_MANIFEST = UPDATED_PMC_TXT / ".staging_manifest.json"
     PMC_STAGING_AGE_DAYS = int(os.getenv("PMC_STAGING_AGE_DAYS", "1"))
+    # Recommended cron time (informational — set in crontab/LaunchAgent yourself)
+    PMC_DAILY_RUN_TIME = os.getenv("PMC_DAILY_RUN_TIME", "09:00")
 
     @classmethod
     def setup(cls):

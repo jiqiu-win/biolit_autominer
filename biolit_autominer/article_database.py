@@ -152,8 +152,8 @@ class ArticleDatabase:
             INSERT OR REPLACE INTO articles
             (pmid, pmcid, title, authors, pub_date, journal, abstract, status,
              has_full_text, source, full_text_url, content_hash, local_file_path,
-             local_pdf_path, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             local_pdf_path, error_message, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 pmid,
@@ -170,6 +170,7 @@ class ArticleDatabase:
                 data.get("content_hash"),
                 data.get("local_file_path"),
                 data.get("local_pdf_path"),
+                data.get("error_message"),
                 created_at,
                 now,
             ),

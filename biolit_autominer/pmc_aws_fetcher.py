@@ -340,3 +340,53 @@ class PMCAwsFetcher:
             return bioc
 
         return {"is_full_text": False, "title": "", "abstract": "", "body": ""}
+
+    def check_availability(self, pmcid):
+        """
+        Check whether a PMCID is in the licensed AWS text-mining bucket.
+        Used to distinguish PMC dataset limits from pipeline errors.
+        """
+        pmcid = config.format_pmcid(pmcid)
+        versions = self.list_article_versions(pmcid)
+        if versions:
+            metadata = self.fetch_metadata(pmcid, versions[-1])
+            return {
+                "pmcid": pmcid,
+                "in_aws_bucket": True,
+                "versions": versions,
+                "license_code": (metadata or {}).get("license_code"),
+                "latest_version": versions[-1],
+            }
+
+        for prefix in LEGACY_TXT_PREFIXES:
+            url = self._https_key(f"{prefix}/{pmcid}.txt")
+            if self._head_exists(url):
+                return {
+                    "pmcid": pmcid,
+                    "in_aws_bucket": True,
+                    "versions": [],
+                    "license_code": None,
+                    "latest_version": None,
+                    "legacy_path": prefix,
+                }
+
+        return {
+            "pmcid": pmcid,
+            "in_aws_bucket": False,
+            "versions": [],
+            "license_code": None,
+            "latest_version": None,
+        }
+
+    @staticmethod
+    def check_aws_service_health():
+        """Return True if the PMC AWS bucket responds."""
+        try:
+            response = requests.get(
+                f"{S3_HTTPS_BASE}/?list-type=2&max-keys=1",
+                timeout=15,
+                headers={"User-Agent": "BiolitAutoMiner/1.0 (health-check)"},
+            )
+            return response.status_code == 200
+        except requests.RequestException:
+            return False

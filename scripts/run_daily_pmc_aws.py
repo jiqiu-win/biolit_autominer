@@ -2,19 +2,21 @@
 Daily PMC full-text download via AWS Cloud Service.
 
 Saves new files to:
-  auto_pipeline_output/updated/PMC_full_text_updated/txt/
+  auto_pipeline_output/updated/PMC_full_text_updated/txt/   (visible immediately)
 
 After PMC_STAGING_AGE_DAYS (default 1), moves them to:
   downloaded/pmc_full_text/txt/
 
-Schedule on macOS (cron example — runs every day at 9:00 AM):
+Also writes:
+  auto_pipeline_output/updated/YYYY-MM-DD_summary.json
+  auto_pipeline_output/articles_database.xlsx
+
+Schedule on macOS (cron — fixed daily time, default 9:00 AM):
   crontab -e
   0 9 * * * cd /Users/qiuji/Downloads/biolit_autominer && /usr/bin/python3 scripts/run_daily_pmc_aws.py >> logs/daily_pmc_aws.log 2>&1
 
-Or run manually:
+Or run manually anytime (no need to wait until tomorrow):
   python scripts/run_daily_pmc_aws.py
-  python scripts/run_daily_pmc_aws.py --num_articles 20
-  python scripts/run_daily_pmc_aws.py --archive-only
 """
 
 import argparse
@@ -90,14 +92,33 @@ def main():
         include_pmids=args.include_pmids,
     )
 
-    print("\nStaging folder:", summary["staging_dir"])
-    print("Archive folder: ", summary["archive_dir"])
+    diagnosis = summary.get("diagnosis", {})
+    timing = summary.get("timing", {})
+
+    print("\n" + "=" * 60)
+    print("DAILY RUN SUMMARY")
+    print("=" * 60)
+    print(f"Status:          {diagnosis.get('status')}")
+    print(f"Responsibility:  {diagnosis.get('responsibility')}")
+    print(f"Message:         {diagnosis.get('user_message')}")
+    print()
+    print(f"Scheduled time:  {timing.get('scheduled_run_time')} (if cron is configured)")
+    print(f"Staging folder:  {summary['staging_dir']}  ← new files appear HERE immediately")
+    print(f"Archive folder:  {summary['archive_dir']}  ← after {timing.get('archive_after_days')} day(s)")
     print(f"Downloaded:      {summary['downloaded_count']}")
     print(f"Archived:        {summary['archive']['moved_count']}")
+    print(f"Summary JSON:    {summary.get('summary_json_path')}")
+    print(f"Excel database:  {summary.get('excel_path')}")
+
     if summary["downloaded"]:
         print("\nLatest downloads:")
         for item in summary["downloaded"][:5]:
             print(f"  PMID {item['pmid']} ({item.get('source_method')}) → {item['path']}")
+
+    if summary.get("abstract_only"):
+        print("\nAbstract-only (PMC license limitation, not our code):")
+        for item in summary["abstract_only"][:3]:
+            print(f"  PMID {item['pmid']}: {item.get('diagnosis_code')}")
 
 
 if __name__ == "__main__":

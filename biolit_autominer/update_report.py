@@ -304,3 +304,48 @@ class UpdateReportWriter:
         path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"Updated folder synced; summary saved to {path}")
         return path
+
+    def write_daily_aws_report(self, daily_summary, db_stats=None, db=None):
+        """Write YYYY-MM-DD_summary.json for the daily AWS PMC downloader."""
+        run_time = datetime.now()
+        migrated = self.migrate_legacy_filenames(db) if db else 0
+        archived = PmcStagingManager.migrate_flat_downloads_to_txt_subfolder()
+        archive_summary = daily_summary.get("archive") or {"moved_count": 0}
+
+        report = {
+            "report_type": "daily_pmc_aws",
+            "frequency": self.frequency,
+            "scheduled_run_time": config.PMC_DAILY_RUN_TIME,
+            "generated_at": run_time.isoformat(),
+            "timing": daily_summary.get("timing", {}),
+            "diagnosis": daily_summary.get("diagnosis", {}),
+            "aws_service_reachable": daily_summary.get("aws_service_reachable"),
+            "sync_summary": {
+                "search_query": daily_summary.get("search_query"),
+                "total_found": daily_summary.get("total_found"),
+                "new_count": daily_summary.get("new_count"),
+                "modified_count": daily_summary.get("modified_count"),
+                "unchanged_count": daily_summary.get("unchanged_count"),
+                "processed_count": daily_summary.get("downloaded_count"),
+                "downloaded_count": daily_summary.get("downloaded_count"),
+                "abstract_only_count": daily_summary.get("abstract_only_count"),
+                "skipped_no_pmc_count": daily_summary.get("skipped_no_pmc_count"),
+                "duration_seconds": daily_summary.get("duration_seconds"),
+                "downloaded": daily_summary.get("downloaded", []),
+                "abstract_only": daily_summary.get("abstract_only", []),
+                "errors": daily_summary.get("errors", []),
+                "notes": daily_summary.get("diagnosis", {}).get("user_message", ""),
+            },
+            "article_diagnoses": daily_summary.get("article_diagnoses", []),
+            "database_stats": db_stats or {},
+            "folder_counts": self._folder_counts(),
+            "pmc_staging_archived": archive_summary,
+            "legacy_files_migrated": migrated,
+            "legacy_downloads_migrated_to_txt": archived,
+            "excel_path": str(config.EXCEL_OUTPUT),
+        }
+
+        path = self._summary_path(run_time)
+        path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"Daily summary saved to {path}")
+        return path
