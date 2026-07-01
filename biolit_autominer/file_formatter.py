@@ -27,6 +27,8 @@ def format_pmc_fulltext_file(title, body):
 def format_pmc_abstract_only_file(title, abstract):
     """Format like example/PMC11559786_39301884_....txt"""
     note = (
-        "[NOTE: Full text not available via API due to publisher restrictions. Abstract only.]"
+        "[NOTE: Full text not available in PMC Open Access / Author Manuscript datasets. "
+        "Abstract only. Automated retrieval is limited to PMC Cloud Service, E-Utilities, "
+        "BioC API, FTP, and OAI-PMH per PMC text mining policy.]"
     )
     return f"{note}\n\n\nTitle: {title.strip()}\n\n\n{abstract.strip()}\n"

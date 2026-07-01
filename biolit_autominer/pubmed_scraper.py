@@ -8,9 +8,9 @@ from .file_formatter import (
     format_pmc_abstract_only_file,
     format_pmc_fulltext_file,
     format_pubmed_abstract_file,
-    title_slug,
 )
-from .pmc_html_fetcher import PMCHtmlFetcher
+from .pmc_aws_fetcher import PMCAwsFetcher
+from .pmc_staging_manager import PmcStagingManager
 
 
 class FullTextDownloader:
@@ -21,7 +21,9 @@ class FullTextDownloader:
     """
 
     ABSTRACT_ONLY_NOTE = (
-        "[NOTE: Full text not available via API due to publisher restrictions. Abstract only.]"
+        "[NOTE: Full text not available in PMC Open Access / Author Manuscript datasets. "
+        "Abstract only. Automated retrieval is limited to PMC Cloud Service, E-Utilities, "
+        "BioC API, FTP, and OAI-PMH per PMC text mining policy.]"
     )
     MIN_FULLTEXT_WORDS = 150
 
@@ -29,7 +31,11 @@ class FullTextDownloader:
         self.email = email or config.NCBI_EMAIL
         self.api_key = api_key or config.NCBI_API_KEY
         self.sleep_time = sleep_time if sleep_time is not None else config.NCBI_SLEEP_TIME
-        self.html_fetcher = PMCHtmlFetcher(sleep_time=self.sleep_time)
+        self.aws_fetcher = PMCAwsFetcher(
+            sleep_time=self.sleep_time,
+            parse_pmc_xml=self._parse_pmc_xml,
+        )
+        self.staging = PmcStagingManager()
         Entrez.email = self.email
         if self.api_key:
             Entrez.api_key = self.api_key
@@ -127,38 +133,53 @@ class FullTextDownloader:
 
     @staticmethod
     def pmc_filename(pmid, pmcid, title):
-        slug = title_slug(title)
-        return f"{config.format_pmcid(pmcid)}_{pmid}_{slug}.txt"
+        return config.pmc_filename(pmid, pmcid, title)
 
     @staticmethod
-    def pubmed_filename(pmid, title):
-        slug = title_slug(title)
-        return f"PMID{pmid}_{slug}.txt"
+    def pubmed_filename(pmid, title=None):
+        return config.abstract_filename(pmid)
 
     def save_pmc_file(self, pmid, pmcid, title, abstract, pmc_data):
-        filename = self.pmc_filename(pmid, pmcid, title or pmc_data.get("title") or "")
-        path = config.DOWNLOADS_PMC / filename
+        resolved_title = title or pmc_data.get("title") or ""
 
         if pmc_data.get("is_full_text"):
+            path = config.pmc_staging_path(pmid, pmcid, resolved_title)
             content = format_pmc_fulltext_file(
-                title or pmc_data.get("title", ""),
+                resolved_title,
                 pmc_data.get("body", ""),
             )
             content_source = "pmc_full_text"
         else:
+            path = config.pmc_staging_path(pmid, pmcid, resolved_title)
             content = format_pmc_abstract_only_file(
-                title or pmc_data.get("title", ""),
+                resolved_title,
                 pmc_data.get("abstract") or abstract or "",
             )
             content_source = "pmc_abstract_only"
 
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        return {"path": path, "content_source": content_source, "saved": True}
+
+        if pmc_data.get("is_full_text"):
+            self.staging.record_staged_file(path, pmid, pmcid, resolved_title)
+
+        pdf_path = None
+        pdf_bytes = pmc_data.get("pdf_bytes")
+        if pdf_bytes:
+            pdf_path = config.pmc_pdf_download_path(pmid, pmcid, resolved_title)
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            pdf_path.write_bytes(pdf_bytes)
+
+        return {
+            "path": path,
+            "pdf_path": pdf_path,
+            "content_source": content_source,
+            "source_method": pmc_data.get("source_method"),
+            "saved": True,
+        }
 
     def save_pubmed_abstract_file(self, pmid, title, abstract):
-        filename = self.pubmed_filename(pmid, title)
-        path = config.DOWNLOADS_ABSTRACTS / filename
+        path = config.abstract_download_path(pmid)
         content = format_pubmed_abstract_file(title, abstract)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
@@ -173,9 +194,9 @@ class FullTextDownloader:
         PMC-first download strategy.
 
         Order:
-        1. Entrez PMC XML
-        2. PMC HTML page (full text on website but XML is abstract-only)
-        3. PMC PDF linked from HTML page
+        1. Entrez PMC XML (E-Utilities)
+        2. PMC AWS Cloud Service (XML / TXT / PDF from pmc-oa-opendata)
+        3. BioC API (official fallback)
         4. PubMed abstract (only if no PMC record)
         """
         title = metadata.get("title", "")
@@ -187,7 +208,7 @@ class FullTextDownloader:
                 return self.save_pmc_file(pmid, pmcid, title, abstract, pmc_data)
 
             if not pmc_data.get("error"):
-                fallback = self.html_fetcher.fetch_full_text_fallback(pmcid)
+                fallback = self.aws_fetcher.fetch_full_text_fallback(pmcid)
                 if fallback.get("is_full_text"):
                     merged = {
                         **pmc_data,

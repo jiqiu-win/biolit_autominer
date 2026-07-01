@@ -3,6 +3,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .file_formatter import title_slug
+from .prompts import (
+    BATCH_SIZE,
+    EXCLUDE_TYPES,
+    MAX_RESULTS,
+    RETMAX_FETCH,
+    SEARCH_QUERY,
+)
+
 # Project root: biolit_autominer/ (one level above this package folder)
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -21,21 +30,38 @@ class Config:
     OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(BASE_DIR / "auto_pipeline_output")))
     UPDATED_DIR = OUTPUT_DIR / "updated"
     UPDATED_PMC = UPDATED_DIR / "PMC_full_text_updated"
+    UPDATED_PMC_TXT = UPDATED_PMC / "txt"
+    UPDATED_PMC_PDF = UPDATED_PMC / "pdf"
     UPDATED_ABSTRACTS = UPDATED_DIR / "Pubmed_abstracts_updated"
+    UPDATED_ABSTRACTS_TXT = UPDATED_ABSTRACTS / "txt"
+    UPDATED_ABSTRACTS_PDF = UPDATED_ABSTRACTS / "pdf"
 
     DATABASE_PATH = OUTPUT_DIR / "articles.db"
     EXCEL_OUTPUT = OUTPUT_DIR / "articles_database.xlsx"
     SYNC_HISTORY_PATH = OUTPUT_DIR / "sync_history.json"
 
     # Raw downloads (outside auto_pipeline_output/, project root)
-    DOWNLOADS_DIR = Path(os.getenv("DOWNLOADS_DIR", str(BASE_DIR / "downloads")))
-    DOWNLOADS_PMC = DOWNLOADS_DIR / "PMC_full_text"
-    DOWNLOADS_ABSTRACTS = DOWNLOADS_DIR / "Pubmed_abstracts"
+    DOWNLOADS_DIR = Path(os.getenv("DOWNLOADS_DIR", str(BASE_DIR / "downloaded")))
+    DOWNLOADS_PMC = DOWNLOADS_DIR / "pmc_full_text"
+    DOWNLOADS_PMC_TXT = DOWNLOADS_PMC / "txt"
+    DOWNLOADS_PMC_PDF = DOWNLOADS_PMC / "pdf"
+    DOWNLOADS_ABSTRACTS = DOWNLOADS_DIR / "pubmed_abstracts"
 
     # Gemini 2.5 extractions (outside auto_pipeline_output/, project root)
     GEMINI_CACHE_DIR = Path(os.getenv("GEMINI_CACHE_DIR", str(BASE_DIR / "gemini_raw_cache")))
     GEMINI_CACHE_PMC = GEMINI_CACHE_DIR / "PMC_full_text"
     GEMINI_CACHE_ABSTRACTS = GEMINI_CACHE_DIR / "Pubmed_abstracts"
+
+    UPDATED_EXTRACTION_XLSX = UPDATED_DIR / "full_text_extraction.xlsx"
+
+    CHEAP_LLM_MODEL = os.getenv("CHEAP_LLM_MODEL", "deepseek")
+    STRONG_LLM_MODEL = os.getenv("STRONG_LLM_MODEL", "gemini")
+    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+    DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    QWEN_API_KEY = os.getenv("QWEN_API_KEY")
+    QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-plus")
 
     UPDATE_FREQUENCY = os.getenv("UPDATE_FREQUENCY", "daily")
 
@@ -43,16 +69,39 @@ class Config:
     RAW_TEXT_CACHE = DOWNLOADS_DIR
     GEMINI_CACHE = GEMINI_CACHE_DIR
 
-    DEFAULT_SEARCH_QUERY = "hepatotoxicity AND mitochondrial"
+    DEFAULT_SEARCH_QUERY = os.getenv("SEARCH_QUERY") or SEARCH_QUERY
+    BATCH_SIZE = BATCH_SIZE
+    MAX_RESULTS = MAX_RESULTS
+    RETMAX_FETCH = RETMAX_FETCH
+    EXCLUDE_PUBLICATION_TYPES = EXCLUDE_TYPES
+    GEMINI_MAX_TEXT_CHARS = int(os.getenv("GEMINI_MAX_TEXT_CHARS", "50000"))
+
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+    # PMC official text-mining AWS Cloud Service (no account required)
+    PMC_AWS_BUCKET = os.getenv("PMC_AWS_BUCKET", "pmc-oa-opendata")
+    PMC_AWS_HTTPS_BASE = os.getenv(
+        "PMC_AWS_HTTPS_BASE",
+        f"https://{os.getenv('PMC_AWS_BUCKET', 'pmc-oa-opendata')}.s3.amazonaws.com",
+    )
+
+    # PMC full-text staging: updated/.../txt first, then downloaded/.../txt after N days
+    PMC_STAGING_MANIFEST = UPDATED_PMC_TXT / ".staging_manifest.json"
+    PMC_STAGING_AGE_DAYS = int(os.getenv("PMC_STAGING_AGE_DAYS", "1"))
 
     @classmethod
     def setup(cls):
         folders = [
             cls.OUTPUT_DIR,
             cls.UPDATED_PMC,
+            cls.UPDATED_PMC_TXT,
+            cls.UPDATED_PMC_PDF,
             cls.UPDATED_ABSTRACTS,
+            cls.UPDATED_ABSTRACTS_TXT,
+            cls.UPDATED_ABSTRACTS_PDF,
             cls.DOWNLOADS_PMC,
+            cls.DOWNLOADS_PMC_TXT,
+            cls.DOWNLOADS_PMC_PDF,
             cls.DOWNLOADS_ABSTRACTS,
             cls.GEMINI_CACHE_PMC,
             cls.GEMINI_CACHE_ABSTRACTS,
@@ -69,36 +118,64 @@ class Config:
         return pmcid if pmcid.upper().startswith("PMC") else f"PMC{pmcid}"
 
     @classmethod
-    def pmc_filename(cls, pmid, pmcid):
-        return f"{cls.format_pmcid(pmcid)}_{pmid}.txt"
+    def pmc_filename(cls, pmid, pmcid, title=""):
+        slug = title_slug(title) if title else "Untitled"
+        return f"{cls.format_pmcid(pmcid)}_{pmid}_{slug}.txt"
+
+    @classmethod
+    def pmc_pdf_filename(cls, pmid, pmcid, title=""):
+        slug = title_slug(title) if title else "Untitled"
+        return f"{cls.format_pmcid(pmcid)}_{pmid}_{slug}.pdf"
 
     @classmethod
     def abstract_filename(cls, pmid):
         return f"PM{pmid}_abstract.txt"
 
     @classmethod
-    def pmc_download_path(cls, pmid, pmcid):
-        return cls.DOWNLOADS_PMC / cls.pmc_filename(pmid, pmcid)
+    def pmc_download_path(cls, pmid, pmcid, title=""):
+        """Archived PMC full-text path (after staging period)."""
+        return cls.DOWNLOADS_PMC_TXT / cls.pmc_filename(pmid, pmcid, title)
+
+    @classmethod
+    def pmc_staging_path(cls, pmid, pmcid, title=""):
+        """Fresh PMC full-text path (day 0 staging in updated/)."""
+        return cls.updated_pmc_txt_path(pmid, pmcid, title)
 
     @classmethod
     def abstract_download_path(cls, pmid):
         return cls.DOWNLOADS_ABSTRACTS / cls.abstract_filename(pmid)
 
     @classmethod
-    def pmc_gemini_path(cls, pmid, pmcid):
-        return cls.GEMINI_CACHE_PMC / cls.pmc_filename(pmid, pmcid)
+    def pmc_pdf_download_path(cls, pmid, pmcid, title=""):
+        return cls.DOWNLOADS_PMC_PDF / cls.pmc_pdf_filename(pmid, pmcid, title)
+
+    @classmethod
+    def pmc_gemini_path(cls, pmid, pmcid, title=""):
+        return cls.GEMINI_CACHE_PMC / cls.pmc_filename(pmid, pmcid, title)
 
     @classmethod
     def abstract_gemini_path(cls, pmid):
         return cls.GEMINI_CACHE_ABSTRACTS / cls.abstract_filename(pmid)
 
     @classmethod
-    def updated_pmc_path(cls, pmid, pmcid):
-        return cls.UPDATED_PMC / cls.pmc_filename(pmid, pmcid)
+    def updated_pmc_txt_path(cls, pmid, pmcid, title=""):
+        return cls.UPDATED_PMC_TXT / cls.pmc_filename(pmid, pmcid, title)
+
+    @classmethod
+    def updated_pmc_pdf_path(cls, pmid, pmcid, title=""):
+        return cls.UPDATED_PMC_PDF / cls.pmc_pdf_filename(pmid, pmcid, title)
+
+    @classmethod
+    def updated_abstract_txt_path(cls, pmid):
+        return cls.UPDATED_ABSTRACTS_TXT / cls.abstract_filename(pmid)
+
+    @classmethod
+    def updated_pmc_path(cls, pmid, pmcid, title=""):
+        return cls.updated_pmc_txt_path(pmid, pmcid, title)
 
     @classmethod
     def updated_abstract_path(cls, pmid):
-        return cls.UPDATED_ABSTRACTS / cls.abstract_filename(pmid)
+        return cls.updated_abstract_txt_path(pmid)
 
 
 config = Config

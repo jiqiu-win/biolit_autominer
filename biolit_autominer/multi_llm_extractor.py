@@ -18,6 +18,12 @@ class MultiLLMExtractor:
         self.cache_dir = Path(cache_dir or config.GEMINI_CACHE)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+    def extract_full_prompt(self, complete_prompt, model="gemini"):
+        """Send a fully assembled prompt string (as in Auto_pipeline_complete.ipynb)."""
+        if model == "gemini":
+            return self._extract_gemini_content(complete_prompt)
+        raise ValueError(f"Unsupported model: {model}")
+
     def extract(self, text, model="gemini", prompt=None):
         prompt = prompt or self.default_prompt()
         if model == "gemini":
@@ -41,7 +47,7 @@ class MultiLLMExtractor:
             "Return JSON with keys: compound, mechanism, organ, confidence."
         )
 
-    def _extract_gemini(self, text, prompt):
+    def _extract_gemini_content(self, content):
         try:
             import vertexai
             from vertexai.generative_models import GenerativeModel
@@ -49,7 +55,7 @@ class MultiLLMExtractor:
             vertexai.init(project=config.GEMINI_PROJECT_ID, location="us-central1")
             model = GenerativeModel(config.GEMINI_MODEL)
             response = model.generate_content(
-                f"{prompt}\n\nTEXT:\n{text[:12000]}",
+                content,
                 generation_config={"temperature": config.GEMINI_TEMPERATURE},
             )
             return {
@@ -59,6 +65,13 @@ class MultiLLMExtractor:
             }
         except Exception as exc:
             return {"model": config.GEMINI_MODEL, "status": "error", "error": str(exc)}
+
+    def _extract_gemini(self, text, prompt):
+        # Legacy path: prompt template with optional placeholder
+        content = prompt if "{{{TEXT}}}" not in prompt else prompt.replace(
+            "{{{TEXT}}}", text[: config.GEMINI_MAX_TEXT_CHARS]
+        )
+        return self._extract_gemini_content(content)
 
     def _extract_gpt4(self, text, prompt):
         return {
@@ -79,20 +92,16 @@ class MultiLLMExtractor:
         Save Gemini 2.5 bracket extractions as .txt in gemini_raw_cache/.
         Uses the same filename pattern as downloads/.
         """
-        from .pubmed_scraper import FullTextDownloader
-
         text = result.get("raw_response") if isinstance(result, dict) else str(result)
         if not text:
             text = json.dumps(result, indent=2)
 
         if source_type == "pubmed_abstract":
-            filename = FullTextDownloader.pubmed_filename(pmid, title)
-            path = config.GEMINI_CACHE_ABSTRACTS / filename
+            path = config.abstract_gemini_path(pmid)
         else:
             if not pmcid:
                 raise ValueError("pmcid is required when source_type is 'pmc'")
-            filename = FullTextDownloader.pmc_filename(pmid, pmcid, title)
-            path = config.GEMINI_CACHE_PMC / filename
+            path = config.pmc_gemini_path(pmid, pmcid, title)
 
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text.strip() + "\n", encoding="utf-8")

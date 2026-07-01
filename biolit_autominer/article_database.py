@@ -119,6 +119,7 @@ class ArticleDatabase:
             "abstract": "TEXT",
             "content_hash": "TEXT",
             "local_file_path": "TEXT",
+            "local_pdf_path": "TEXT",
         }
         for column, col_type in migrations.items():
             if column not in columns:
@@ -151,8 +152,8 @@ class ArticleDatabase:
             INSERT OR REPLACE INTO articles
             (pmid, pmcid, title, authors, pub_date, journal, abstract, status,
              has_full_text, source, full_text_url, content_hash, local_file_path,
-             created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             local_pdf_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 pmid,
@@ -168,6 +169,7 @@ class ArticleDatabase:
                 data.get("full_text_url"),
                 data.get("content_hash"),
                 data.get("local_file_path"),
+                data.get("local_pdf_path"),
                 created_at,
                 now,
             ),
@@ -280,6 +282,50 @@ class ArticleDatabase:
             print(f"Exported to {output_path}")
         except Exception as exc:
             print(f"Export failed: {exc}")
+
+    def mark_gemini_processed(self, pmid, cache_path, raw_response=""):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE articles
+            SET gemini_processed = 1,
+                gemini_result = ?,
+                updated_at = ?
+            WHERE pmid = ?
+            """,
+            (raw_response[:50000] if raw_response else None, datetime.now(), pmid),
+        )
+        conn.commit()
+        conn.close()
+
+    def get_articles_for_extraction(self, pmids=None):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        if pmids:
+            placeholders = ",".join("?" for _ in pmids)
+            cursor.execute(
+                f"""
+                SELECT pmid, pmcid, title, source, local_file_path, gemini_processed
+                FROM articles
+                WHERE pmid IN ({placeholders})
+                ORDER BY pmid
+                """,
+                list(pmids),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT pmid, pmcid, title, source, local_file_path, gemini_processed
+                FROM articles
+                WHERE local_file_path IS NOT NULL
+                ORDER BY pmid
+                """
+            )
+        rows = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return rows
 
     def get_stats(self):
         conn = sqlite3.connect(self.db_path)

@@ -17,11 +17,17 @@ python tests/test_setup.py
 python run_pipeline.py --num_articles 10
 ```
 
-## Download priority
+## Download priority (PMC copyright-compliant)
 
-1. **PMC full text** via Entrez (saved to `downloads/PMC_full_text/`)
-2. **PMC abstract-only** when full text is restricted (same folder, with `[NOTE: ...]` header)
-3. **PubMed abstract** only when no PMC record exists (`downloads/Pubmed_abstracts/`)
+Per [PMC text mining policy](https://pmc.ncbi.nlm.nih.gov/tools/textmining/), automated retrieval uses only official services:
+
+1. **PMC full text** via Entrez E-Utilities (saved to `downloaded/pmc_full_text/`)
+2. **PMC AWS Cloud Service** (`s3://pmc-oa-opendata`) — XML, TXT, or PDF when Entrez returns abstract-only
+3. **BioC API** — official fallback when article is not yet in the AWS bucket layout
+4. **PMC abstract-only** when the article is not in the Open Access / Author Manuscript datasets (with `[NOTE: ...]` header)
+5. **PubMed abstract** only when no PMC record exists (`downloaded/pubmed_abstracts/`)
+
+Publisher websites and PMC HTML pages are **not** scraped.
 
 Saved files follow the naming and format in the `example/` folder.
 

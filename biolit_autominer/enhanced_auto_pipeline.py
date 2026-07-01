@@ -5,6 +5,7 @@ from .config import config
 from .incremental_sync import IncrementalSync
 from .incremental_update_manager import IncrementalUpdateManager
 from .pubmed_scraper import PubMedScraper
+from .gemini_extraction_runner import GeminiExtractionRunner
 from .update_report import UpdateReportWriter
 
 
@@ -29,6 +30,9 @@ class EnhancedAutoPipeline:
         max_results=100,
         process_limit=10,
         use_incremental=True,
+        include_pmids=None,
+        run_gemini=True,
+        gemini_limit=None,
     ):
         search_query = search_query or config.DEFAULT_SEARCH_QUERY
         print(f"Starting workflow: {search_query}")
@@ -38,9 +42,20 @@ class EnhancedAutoPipeline:
                 search_query=search_query,
                 max_results=max_results,
                 process_limit=process_limit,
+                include_pmids=include_pmids,
             )
         else:
             summary = self._simple_workflow(search_query, process_limit)
+
+        processed_pmids = summary.get("new_processed", []) + summary.get("modified_processed", [])
+        gemini_summary = {}
+        if run_gemini:
+            gemini_runner = GeminiExtractionRunner(self.db)
+            gemini_summary = gemini_runner.run(
+                pmids=processed_pmids or None,
+                limit=gemini_limit,
+            )
+            summary["gemini_extraction"] = gemini_summary
 
         self.db.export_to_excel(self.output_dir / "articles_database.xlsx")
         self.db.export_sync_history(self.output_dir / "sync_history.json")

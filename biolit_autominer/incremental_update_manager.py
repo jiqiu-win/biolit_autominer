@@ -78,6 +78,7 @@ class IncrementalUpdateManager:
                 "has_full_text": download["content_source"] == "pmc_full_text",
                 "source": download["content_source"],
                 "local_file_path": str(download["path"]),
+                "local_pdf_path": str(download["pdf_path"]) if download.get("pdf_path") else None,
                 "full_text_url": link_data.get("full_text_url"),
             }
             self.db.add_article(pmid, record)
@@ -85,11 +86,13 @@ class IncrementalUpdateManager:
 
         return {"processed": processed, "errors": errors}
 
-    def run_incremental_sync(self, search_query, max_results=100, process_limit=None):
+    def run_incremental_sync(self, search_query, max_results=100, process_limit=None, include_pmids=None):
         start = time.time()
         plan = self.plan_update(search_query, max_results=max_results)
 
-        pmids_to_process = plan["to_process"]
+        include_pmids = [str(p) for p in (include_pmids or [])]
+        remaining = [p for p in plan["to_process"] if p not in include_pmids]
+        pmids_to_process = include_pmids + remaining
         if process_limit is not None:
             pmids_to_process = pmids_to_process[:process_limit]
 
@@ -100,7 +103,7 @@ class IncrementalUpdateManager:
         all_errors = []
 
         for pmid in pmids_to_process:
-            status = "modified" if pmid in modified_set else "new"
+            status = "modified" if pmid in modified_set or pmid in include_pmids else "new"
             result = self.process_articles([pmid], status=status)
             if pmid in result["processed"]:
                 if status == "modified":

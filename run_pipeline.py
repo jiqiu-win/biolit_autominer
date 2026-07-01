@@ -16,8 +16,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run the Biolit AutoMiner pipeline")
     parser.add_argument(
         "--query",
-        default=config.DEFAULT_SEARCH_QUERY,
-        help="PubMed search query",
+        default=None,
+        help="PubMed search query (default: SEARCH_QUERY from prompts.py / notebook)",
     )
     parser.add_argument(
         "--num_articles",
@@ -41,16 +41,36 @@ def main():
         action="store_true",
         help="Disable incremental update logic (process only brand-new PMIDs)",
     )
+    parser.add_argument(
+        "--include_pmids",
+        nargs="+",
+        default=[],
+        help="PMIDs to always include in this run (e.g. 39301884 for PMC11559786)",
+    )
+    parser.add_argument(
+        "--no_gemini",
+        action="store_true",
+        help="Skip Gemini extraction step",
+    )
+    parser.add_argument(
+        "--gemini_limit",
+        type=int,
+        default=None,
+        help="Max articles to send to Gemini this run (default: all processed)",
+    )
     args = parser.parse_args()
 
     config.setup()
 
     pipeline = EnhancedAutoPipeline(output_dir=args.output_dir)
     result = pipeline.full_workflow(
-        search_query=args.query,
+        search_query=args.query or config.DEFAULT_SEARCH_QUERY,
         max_results=args.max_results,
         process_limit=args.num_articles,
         use_incremental=not args.no_incremental,
+        include_pmids=args.include_pmids,
+        run_gemini=not args.no_gemini,
+        gemini_limit=args.gemini_limit,
     )
 
     print("\nRun complete:")

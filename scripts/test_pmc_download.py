@@ -1,4 +1,4 @@
-"""Re-download one PMC article to verify HTML/PDF fallback."""
+"""Re-download one PMC article to verify AWS Cloud Service fallback."""
 
 import argparse
 
@@ -8,7 +8,7 @@ from biolit_autominer.pubmed_scraper import FullTextDownloader
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test PMC full-text fallback download")
+    parser = argparse.ArgumentParser(description="Test PMC AWS Cloud Service download")
     parser.add_argument("--pmid", default="39301884")
     parser.add_argument("--pmcid", default="PMC11559786")
     args = parser.parse_args()

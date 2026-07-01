@@ -6,5 +6,6 @@ biolit_autominer.egg-info/
 *.xlsx
 .env
 downloads/
+downloaded/
 gemini_raw_cache/
 auto_pipeline_output/
