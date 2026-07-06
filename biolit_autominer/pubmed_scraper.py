@@ -171,8 +171,8 @@ class FullTextDownloader:
             pdf_path.write_bytes(pdf_bytes)
 
         return {
-            "path": path,
-            "pdf_path": pdf_path,
+            "path": path.resolve(),
+            "pdf_path": pdf_path.resolve() if pdf_path else None,
             "content_source": content_source,
             "source_method": pmc_data.get("source_method"),
             "saved": True,

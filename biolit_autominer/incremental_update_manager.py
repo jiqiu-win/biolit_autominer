@@ -50,6 +50,7 @@ class IncrementalUpdateManager:
         """Fetch metadata, PMCID, download text with PMC-first priority."""
         processed = []
         errors = []
+        skipped_excluded = []
 
         pmcid_map = self.sync.map_pmcids_batch(pmids)
 
@@ -57,6 +58,11 @@ class IncrementalUpdateManager:
             metadata = self.sync.fetch_metadata(pmid)
             if metadata.get("error"):
                 errors.append({"pmid": pmid, "error": metadata["error"]})
+                continue
+
+            pub_types = metadata.get("publication_types") or []
+            if config.is_excluded_publication_type(pub_types):
+                skipped_excluded.append({"pmid": pmid, "publication_types": pub_types})
                 continue
 
             pmcid = pmcid_map.get(pmid)
@@ -84,7 +90,9 @@ class IncrementalUpdateManager:
             self.db.add_article(pmid, record)
             processed.append(pmid)
 
-        return {"processed": processed, "errors": errors}
+        if skipped_excluded:
+            print(f"Skipped {len(skipped_excluded)} excluded-type article(s) (review/editorial/etc.)")
+        return {"processed": processed, "errors": errors, "skipped_excluded": skipped_excluded}
 
     def run_incremental_sync(self, search_query, max_results=100, process_limit=None, include_pmids=None):
         start = time.time()

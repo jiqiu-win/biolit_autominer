@@ -69,6 +69,16 @@ def main():
         default=None,
         help="Days to keep files in staging before archive (default: env or 1)",
     )
+    parser.add_argument(
+        "--no-gemini",
+        action="store_true",
+        help="Skip Gemini 2.5 extraction after download",
+    )
+    parser.add_argument(
+        "--gemini-force",
+        action="store_true",
+        help="Re-run Gemini even if already processed",
+    )
     args = parser.parse_args()
 
     config.setup()
@@ -90,6 +100,8 @@ def main():
         max_results=args.max_results,
         process_limit=args.num_articles,
         include_pmids=args.include_pmids,
+        run_gemini=not args.no_gemini,
+        gemini_force=args.gemini_force,
     )
 
     diagnosis = summary.get("diagnosis", {})
@@ -106,9 +118,20 @@ def main():
     print(f"Staging folder:  {summary['staging_dir']}  ← new files appear HERE immediately")
     print(f"Archive folder:  {summary['archive_dir']}  ← after {timing.get('archive_after_days')} day(s)")
     print(f"Downloaded:      {summary['downloaded_count']}")
+    if summary.get("target_count"):
+        print(f"Target:          {summary['target_count']}")
+    print(f"Skipped (exist): {summary.get('skipped_already_downloaded_count', 0)}")
     print(f"Archived:        {summary['archive']['moved_count']}")
     print(f"Summary JSON:    {summary.get('summary_json_path')}")
     print(f"Excel database:  {summary.get('excel_path')}")
+    print(f"Extraction xlsx: {summary.get('extraction_xlsx_path')}")
+    print(f"Dataset xlsx:    {summary.get('dataset_xlsx_path')}")
+    gemini = summary.get("gemini_extraction", {})
+    if gemini:
+        print(
+            f"Gemini:          {len(gemini.get('processed', []))} extracted, "
+            f"{len(gemini.get('errors', []))} errors"
+        )
 
     if summary["downloaded"]:
         print("\nLatest downloads:")

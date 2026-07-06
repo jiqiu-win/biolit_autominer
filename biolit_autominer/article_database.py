@@ -188,6 +188,30 @@ class ArticleDatabase:
         conn.close()
         return dict(row) if row else None
 
+    def update_local_file_path(self, pmid, txt_path, pdf_path=None):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        if pdf_path is not None:
+            cursor.execute(
+                """
+                UPDATE articles
+                SET local_file_path = ?, local_pdf_path = ?, updated_at = ?
+                WHERE pmid = ?
+                """,
+                (str(txt_path), str(pdf_path) if pdf_path else None, datetime.now(), str(pmid)),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE articles
+                SET local_file_path = ?, updated_at = ?
+                WHERE pmid = ?
+                """,
+                (str(txt_path), datetime.now(), str(pmid)),
+            )
+        conn.commit()
+        conn.close()
+
     def get_existing_pmids(self):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -327,6 +351,25 @@ class ArticleDatabase:
         rows = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return rows
+
+    def get_unprocessed_full_text_pmids(self, limit=None):
+        """PMIDs with PMC full text saved but not yet sent to Gemini."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT pmid FROM articles
+            WHERE has_full_text = 1
+              AND source LIKE 'pmc%'
+              AND (gemini_processed IS NULL OR gemini_processed = 0)
+            ORDER BY pmid
+            """
+        )
+        pmids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        if limit is not None:
+            pmids = pmids[:limit]
+        return pmids
 
     def get_stats(self):
         conn = sqlite3.connect(self.db_path)

@@ -23,7 +23,7 @@ class GeminiExtractionRunner:
 
         candidates = []
         if local_path:
-            candidates.append(Path(local_path))
+            candidates.append(config.resolve_project_path(local_path))
         if source == "pubmed_abstract":
             candidates.extend(
                 [

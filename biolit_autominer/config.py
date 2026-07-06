@@ -54,6 +54,12 @@ class Config:
 
     UPDATED_EXTRACTION_XLSX = UPDATED_DIR / "full_text_extraction.xlsx"
 
+    # Conference / PI-facing dataset (updated daily)
+    DATASET_DB_PATH = OUTPUT_DIR / "biolit_dataset.db"
+    DATASET_XLSX_PATH = UPDATED_DIR / "biolit_dataset.xlsx"
+    DATASET_FINDINGS_CSV = UPDATED_DIR / "biolit_findings.csv"
+    DATASET_ARTICLES_CSV = UPDATED_DIR / "biolit_articles.csv"
+
     CHEAP_LLM_MODEL = os.getenv("CHEAP_LLM_MODEL", "deepseek")
     STRONG_LLM_MODEL = os.getenv("STRONG_LLM_MODEL", "gemini")
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
@@ -112,6 +118,23 @@ class Config:
             folder.mkdir(parents=True, exist_ok=True)
         print("Configuration validated")
 
+    # Publication types that must never enter the dataset (reviews, editorials, etc.).
+    # Built from EXCLUDE_TYPES in prompts.py, normalised for case-insensitive matching.
+    EXCLUDED_PUB_TYPES = {t.lower() for t in EXCLUDE_TYPES} | {
+        "systematic review",
+        "review article",
+        "retracted publication",
+        "published erratum",
+    }
+
+    @classmethod
+    def is_excluded_publication_type(cls, publication_types):
+        """True if any of an article's PubMed publication types is excluded."""
+        for pub_type in publication_types or []:
+            if str(pub_type).strip().lower() in cls.EXCLUDED_PUB_TYPES:
+                return True
+        return False
+
     @staticmethod
     def format_pmcid(pmcid):
         pmcid = str(pmcid).strip()
@@ -132,6 +155,14 @@ class Config:
     @classmethod
     def abstract_filename(cls, pmid):
         return f"PM{pmid}_abstract.txt"
+
+    @classmethod
+    def resolve_project_path(cls, path):
+        """Resolve relative paths against project BASE_DIR."""
+        path = Path(path)
+        if path.is_absolute():
+            return path
+        return BASE_DIR / path
 
     @classmethod
     def pmc_download_path(cls, pmid, pmcid, title=""):

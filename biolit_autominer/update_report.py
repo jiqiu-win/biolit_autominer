@@ -328,10 +328,18 @@ class UpdateReportWriter:
                 "unchanged_count": daily_summary.get("unchanged_count"),
                 "processed_count": daily_summary.get("downloaded_count"),
                 "downloaded_count": daily_summary.get("downloaded_count"),
+                "skipped_already_downloaded_count": daily_summary.get(
+                    "skipped_already_downloaded_count", 0
+                ),
+                "target_count": daily_summary.get("target_count"),
+                "candidates_scanned": daily_summary.get("candidates_scanned"),
                 "abstract_only_count": daily_summary.get("abstract_only_count"),
                 "skipped_no_pmc_count": daily_summary.get("skipped_no_pmc_count"),
                 "duration_seconds": daily_summary.get("duration_seconds"),
                 "downloaded": daily_summary.get("downloaded", []),
+                "skipped_already_downloaded": daily_summary.get(
+                    "skipped_already_downloaded", []
+                ),
                 "abstract_only": daily_summary.get("abstract_only", []),
                 "errors": daily_summary.get("errors", []),
                 "notes": daily_summary.get("diagnosis", {}).get("user_message", ""),
@@ -343,6 +351,8 @@ class UpdateReportWriter:
             "legacy_files_migrated": migrated,
             "legacy_downloads_migrated_to_txt": archived,
             "excel_path": str(config.EXCEL_OUTPUT),
+            "extraction_xlsx_path": str(config.UPDATED_EXTRACTION_XLSX),
+            "gemini_extraction": daily_summary.get("gemini_extraction", {}),
         }
 
         path = self._summary_path(run_time)

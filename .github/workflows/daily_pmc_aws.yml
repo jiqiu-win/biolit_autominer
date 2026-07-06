@@ -1,0 +1,79 @@
+# Daily PMC download — runs on GitHub's servers (your Mac can be off).
+#
+# Setup:
+#   1. Push this repo to GitHub
+#   2. Settings → Secrets → Actions → add:
+#        NCBI_EMAIL      = jq2430@columbia.edu
+#        NCBI_API_KEY    = your NCBI key
+#   3. Optional (save outputs to YOUR S3 bucket):
+#        AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, BIOLIT_S3_BUCKET
+#
+# Schedule: 00:01 US Eastern ≈ 04:01 UTC (EDT) / 05:01 UTC (EST)
+# Edit cron below if you change timezone.
+
+name: Daily PMC AWS Download
+
+on:
+  schedule:
+    # 04:01 UTC ≈ 00:01 AM Eastern Daylight Time
+    - cron: "1 4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Restore articles database cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            auto_pipeline_output/articles.db
+            auto_pipeline_output/sync_history.json
+            auto_pipeline_output/updated/PMC_full_text_updated/txt/.staging_manifest.json
+          key: biolit-pipeline-state-v1
+          restore-keys: biolit-pipeline-state-
+
+      - name: Authenticate to Google Cloud (Gemini)
+        if: ${{ secrets.GCP_SA_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Run daily PMC AWS download + Gemini (cloud)
+        env:
+          NCBI_EMAIL: ${{ secrets.NCBI_EMAIL }}
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          GEMINI_PROJECT_ID: ${{ secrets.GEMINI_PROJECT_ID }}
+          BIOLIT_S3_BUCKET: ${{ secrets.BIOLIT_S3_BUCKET }}
+          BIOLIT_S3_PREFIX: biolit_autominer
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: python scripts/run_daily_pmc_aws_cloud.py --num_articles 50
+
+      - name: Upload daily outputs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pmc-daily-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            auto_pipeline_output/updated/*_summary.json
+            auto_pipeline_output/articles_database.xlsx
+            auto_pipeline_output/updated/full_text_extraction.xlsx
+            auto_pipeline_output/updated/PMC_full_text_updated/txt/
+            downloaded/pmc_full_text/txt/
+            gemini_raw_cache/

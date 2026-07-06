@@ -5,6 +5,7 @@ from .config import config
 from .incremental_sync import IncrementalSync
 from .incremental_update_manager import IncrementalUpdateManager
 from .pubmed_scraper import PubMedScraper
+from .dataset_database import sync_dataset_from_pipeline
 from .gemini_extraction_runner import GeminiExtractionRunner
 from .update_report import UpdateReportWriter
 
@@ -66,6 +67,9 @@ class EnhancedAutoPipeline:
             db_stats=self.db.get_stats(),
             db=self.db,
         )
+
+        dataset_summary = sync_dataset_from_pipeline(self.db)
+        summary["dataset"] = dataset_summary
 
         self.db.print_stats()
 

@@ -61,6 +61,11 @@ class IncrementalSync:
                 pub_date = self._format_pub_date(article_node.find(".//Journal/JournalIssue/PubDate"))
                 abstract = self._extract_abstract(article_node.find("Abstract"))
                 authors = self._extract_authors(article_node.find("AuthorList"))
+                publication_types = [
+                    pt.text.strip()
+                    for pt in article_node.findall(".//PublicationTypeList/PublicationType")
+                    if pt is not None and pt.text
+                ]
 
                 metadata = {
                     "pmid": pmid,
@@ -69,6 +74,7 @@ class IncrementalSync:
                     "journal": journal,
                     "pub_date": pub_date,
                     "abstract": abstract,
+                    "publication_types": publication_types,
                 }
                 metadata["content_hash"] = self.compute_content_hash(metadata)
                 return metadata

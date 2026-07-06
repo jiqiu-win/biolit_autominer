@@ -9,3 +9,15 @@ downloads/
 downloaded/
 gemini_raw_cache/
 auto_pipeline_output/
+demo_dataset/
+pg_test_dataset/
+
+# Cursor chat logs — contain conversation history incl. secrets; never publish
+research_notes/
+
+# Local throwaway PostgreSQL test cluster (created by conda; not for the server)
+.pgenv/
+.pgdata/
+.pgsock/
+.pglog
+.venv/
