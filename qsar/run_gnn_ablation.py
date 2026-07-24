@@ -46,7 +46,16 @@ GRAPH_MODELS = ["Graphormer", "GraphGPS", "GraphSAGE"]
 def main():
     ap = argparse.ArgumentParser(description="GNN small-data ablation")
     ap.add_argument("--marker", default="ALT")
+    ap.add_argument("--data", default=None, help="Dataset xlsx path (passed to the pipeline)")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="Quick smoke test: N random chemicals only (e.g. --limit 300)")
     args = ap.parse_args()
+
+    passthrough = []
+    if args.data:
+        passthrough += ["--data", args.data]
+    if args.limit:
+        passthrough += ["--limit", str(args.limit)]
 
     combined = []
     for tag, extra in CONFIGS:
@@ -54,7 +63,7 @@ def main():
         print(f"# CONFIG: {tag}   {' '.join(extra) or '(defaults)'}")
         print("#" * 70)
         cmd = [sys.executable, str(PIPELINE), "--marker", args.marker,
-               "--tag", tag, "--models", *GRAPH_MODELS, *extra]
+               "--tag", tag, "--models", *GRAPH_MODELS, *passthrough, *extra]
         subprocess.run(cmd, check=True)
 
         res_path = RESULTS / f"results_{args.marker}_{tag}.csv"
