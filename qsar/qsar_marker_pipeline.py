@@ -566,6 +566,9 @@ def main():
                         help="Path to the dataset xlsx (default: DATA_XLSX in the file). "
                              "Set this on the HPC to point at the uploaded dataset.")
     parser.add_argument("--sheet", default=DATA_SHEET, help="Sheet name (default: Findings)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Quick smoke test: keep only N random chemicals "
+                             "(e.g. --limit 300) so SMILES + training run fast.")
     parser.add_argument("--test-size", type=float, default=0.20)
     parser.add_argument("--val-size", type=float, default=0.20)
     parser.add_argument("--smiles-sleep", type=float, default=0.2,
@@ -593,6 +596,10 @@ def main():
 
     # 1) labels ---------------------------------------------------------------
     full = build_full_dataset(args.marker, data_path=args.data, sheet=args.sheet)
+
+    if args.limit and args.limit < len(full):
+        full = full.sample(n=args.limit, random_state=SEED).reset_index(drop=True)
+        print(f"[limit] SMOKE TEST — using {len(full)} random chemicals only")
 
     # 2) name -> SMILES -------------------------------------------------------
     smi_map = resolve_smiles(full["chemical"].tolist(), sleep=args.smiles_sleep)

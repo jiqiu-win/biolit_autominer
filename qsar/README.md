@@ -36,6 +36,10 @@ pip install rdkit pubchempy xgboost scikit-learn pandas numpy openpyxl \
 python qsar/qsar_marker_pipeline.py --marker ALT      # default: all 5 models
 python qsar/qsar_marker_pipeline.py --marker AST      # reuse for another marker — 1 word
 
+# QUICK SMOKE TEST — run end-to-end on only ~300 chemicals to check the code works:
+python qsar/qsar_marker_pipeline.py --marker ALT --limit 300 --tag smoketest \
+       --data "/path/to/biolit_dataset (6).xlsx"
+
 # Only (re)train specific models — updates those rows in the results table, keeps the rest:
 python qsar/qsar_marker_pipeline.py --marker ALT --models GraphSAGE
 python qsar/qsar_marker_pipeline.py --marker ALT --models GraphSAGE RandomForest
