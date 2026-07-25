@@ -47,6 +47,27 @@ python qsar/qsar_marker_pipeline.py --marker ALT --models GraphSAGE RandomForest
 
 Models: `Graphormer`, `GraphGPS`, `GraphSAGE`, `RandomForest`, `XGBoost` (default = all).
 
+## Typical workflow (command cheat-sheet)
+
+On the HPC, add `--data "/path/to/biolit_dataset (6).xlsx"` to each command.
+
+```bash
+# 1. SMOKE TEST — confirm the code runs end-to-end (~a few min; ignore the scores):
+python qsar/qsar_marker_pipeline.py --marker ALT --limit 300 --tag smoketest
+
+# 2. FULL RUN — the real result to report (all 5 models):
+python qsar/qsar_marker_pipeline.py --marker ALT
+
+# 3. ANOTHER MARKER — one word changes:
+python qsar/qsar_marker_pipeline.py --marker AST
+
+# 4. ABLATION — investigate why the GNNs under/over-perform (compares 4 configs):
+python qsar/run_gnn_ablation.py --marker ALT
+
+# 5. HIGH-CONFIDENCE subset (support >= 2) from an existing FULL dataset:
+python qsar/build_high_confidence.py --marker ALT
+```
+
 - **First run is slow**: it resolves ~600 chemical names → SMILES via PubChem (~a few minutes),
   then **caches** them to `qsar/cache/name_to_smiles.csv`. The cache is shared across markers,
   so later markers reuse it and start fast.
