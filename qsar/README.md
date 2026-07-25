@@ -68,6 +68,11 @@ python qsar/run_gnn_ablation.py --marker ALT
 python qsar/build_high_confidence.py --marker ALT
 ```
 
+**Order of operations:** run the **baseline full run (step 2) first** and look at the results.
+The **ablation (step 4) is a diagnostic tool — only run it if** the graph models still
+underperform, or if you want to confirm the best config for the paper. It is expensive
+(3 graph models × 4 configs), so don't run it by default.
+
 - **First run is slow**: it resolves ~600 chemical names → SMILES via PubChem (~a few minutes),
   then **caches** them to `qsar/cache/name_to_smiles.csv`. The cache is shared across markers,
   so later markers reuse it and start fast.
