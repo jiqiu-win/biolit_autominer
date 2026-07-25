@@ -1,0 +1,16 @@
+# Direct dependencies for the QSAR/GNN pipeline.
+# Install:  pip install -r qsar/requirements.txt
+#
+# For a PAPER, also capture the EXACT versions from the machine you ran on:
+#   pip freeze > qsar/requirements-lock.txt
+# and cite that lock file (it pins torch/rdkit/etc. so results reproduce).
+
+pandas
+numpy
+openpyxl
+rdkit
+pubchempy
+scikit-learn
+xgboost
+torch
+torch-geometric
