@@ -618,15 +618,15 @@ def main():
     print(f"\n[ready] {len(full)} usable molecules | classes={class_names}")
     print(full["label"].value_counts().to_string())
 
-    # save the built dataset (so it can be inspected / shared)
+    # save the built dataset (tagged, so a --limit smoke test doesn't overwrite the real one)
     cols = ["chemical", "csmi", "label", "y", "support"]
-    ds_path = RESULTS_DIR / f"dataset_{args.marker}_FULL.csv"
+    ds_path = RESULTS_DIR / f"dataset_{args.marker}_{args.tag}.csv"
     full[cols].to_csv(ds_path, index=False)
     print(f"[saved] {ds_path}")
 
     # also save the high-confidence subset (label supported by >= 2 articles)
     hc = full[full["support"] >= 2]
-    hc_path = RESULTS_DIR / f"high_confidence_dataset_{args.marker}.csv"
+    hc_path = RESULTS_DIR / f"high_confidence_dataset_{args.marker}_{args.tag}.csv"
     hc[cols].to_csv(hc_path, index=False)
     print(f"[saved] {hc_path}  ({len(hc)} molecules, support>=2)")
 
