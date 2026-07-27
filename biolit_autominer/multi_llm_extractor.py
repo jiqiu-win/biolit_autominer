@@ -6,9 +6,12 @@ so you can plug in API keys later without changing the pipeline structure.
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .config import config
+
+GEMINI_CALL_TIMEOUT_SECONDS = 240
 
 
 class MultiLLMExtractor:
@@ -54,17 +57,34 @@ class MultiLLMExtractor:
 
             vertexai.init(project=config.GEMINI_PROJECT_ID, location="us-central1")
             model = GenerativeModel(config.GEMINI_MODEL)
-            response = model.generate_content(
+            # This SDK version's generate_content() has no timeout parameter at
+            # all (verified via inspect.signature against the installed
+            # google-cloud-aiplatform==1.148.1) -- so a stalled call would hang
+            # forever with nothing to catch it. Running it in a throwaway thread
+            # and giving up on .result() after GEMINI_CALL_TIMEOUT_SECONDS lets
+            # the caller move on; shutdown(wait=False) means we don't block
+            # waiting for the orphaned thread if the call really is stuck.
+            pool = ThreadPoolExecutor(max_workers=1)
+            future = pool.submit(
+                model.generate_content,
                 content,
                 generation_config={"temperature": config.GEMINI_TEMPERATURE},
             )
+            try:
+                response = future.result(timeout=GEMINI_CALL_TIMEOUT_SECONDS)
+            finally:
+                pool.shutdown(wait=False)
             return {
                 "model": config.GEMINI_MODEL,
                 "status": "success",
                 "raw_response": response.text,
             }
         except Exception as exc:
-            return {"model": config.GEMINI_MODEL, "status": "error", "error": str(exc)}
+            # TimeoutError carries no message text by default (str() is ''),
+            # which made this failure mode indistinguishable from a truly
+            # blank error in logs -- give it an explicit message instead.
+            message = str(exc) or f"Gemini call exceeded {GEMINI_CALL_TIMEOUT_SECONDS}s timeout ({type(exc).__name__})"
+            return {"model": config.GEMINI_MODEL, "status": "error", "error": message}
 
     def _extract_gemini(self, text, prompt):
         # Legacy path: prompt template with optional placeholder

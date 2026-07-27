@@ -6,9 +6,11 @@ Stage 2 (expensive): Gemini / Claude cleans final bracket extraction
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .config import config
+from .multi_llm_extractor import GEMINI_CALL_TIMEOUT_SECONDS
 
 
 class ChainOfThoughtPipeline:
@@ -83,10 +85,16 @@ class ChainOfThoughtPipeline:
 
             vertexai.init(project=config.GEMINI_PROJECT_ID, location="us-central1")
             model = GenerativeModel(config.GEMINI_MODEL)
-            response = model.generate_content(
+            pool = ThreadPoolExecutor(max_workers=1)
+            future = pool.submit(
+                model.generate_content,
                 f"{prompt}\n\nTEXT:\n{text[:12000]}",
                 generation_config={"temperature": config.GEMINI_TEMPERATURE},
             )
+            try:
+                response = future.result(timeout=GEMINI_CALL_TIMEOUT_SECONDS)
+            finally:
+                pool.shutdown(wait=False)
             return {"model": config.GEMINI_MODEL, "status": "success", "raw_response": response.text}
         except Exception as exc:
             return {"model": config.GEMINI_MODEL, "status": "error", "error": str(exc)}

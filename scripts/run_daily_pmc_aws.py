@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 from biolit_autominer.config import config
 from biolit_autominer.pmc_daily_aws_downloader import PmcDailyAwsDownloader
 from biolit_autominer.pmc_staging_manager import PmcStagingManager
+from biolit_autominer.prompts import build_search_query
 
 
 def main():
@@ -79,6 +80,24 @@ def main():
         action="store_true",
         help="Re-run Gemini even if already processed",
     )
+    parser.add_argument(
+        "--start-date",
+        default=None,
+        help="Custom search start date (YYYY/MM/DD) -- for one-time catch-up runs "
+        "covering a gap, e.g. between a static backlog corpus and today. Does not "
+        "change the daily job's normal rolling-30-day default.",
+    )
+    parser.add_argument(
+        "--end-date",
+        default=None,
+        help="Custom search end date (YYYY/MM/DD), used with --start-date",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Concurrent Gemini calls (default 1 = sequential)",
+    )
     args = parser.parse_args()
 
     config.setup()
@@ -94,14 +113,20 @@ def main():
         print(f"Archive-only run: moved {summary['moved_count']} file(s)")
         return
 
+    if args.start_date or args.end_date:
+        search_query = build_search_query(start_date=args.start_date, end_date=args.end_date)
+    else:
+        search_query = args.query or config.DEFAULT_SEARCH_QUERY
+
     downloader = PmcDailyAwsDownloader(db=db, staging=staging)
     summary = downloader.run_daily(
-        search_query=args.query or config.DEFAULT_SEARCH_QUERY,
+        search_query=search_query,
         max_results=args.max_results,
         process_limit=args.num_articles,
         include_pmids=args.include_pmids,
         run_gemini=not args.no_gemini,
         gemini_force=args.gemini_force,
+        gemini_workers=args.workers,
     )
 
     diagnosis = summary.get("diagnosis", {})

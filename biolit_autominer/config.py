@@ -1,4 +1,5 @@
 import os
+import socket
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,6 +16,17 @@ from .prompts import (
 # Project root: biolit_autominer/ (one level above this package folder)
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+
+# A stalled network connection (e.g. PubMed) otherwise hangs forever -- Python's
+# default socket timeout is None (no timeout at all). BioPython's Entrez calls
+# don't expose a timeout parameter directly, so this is set globally, once, for
+# every plain-socket-based call in the process (Entrez, boto3, requests without
+# their own explicit timeout, etc.) rather than patching each call site.
+# NOTE: this does NOT cover vertexai's generate_content() -- that runs over
+# gRPC, which ignores socket.setdefaulttimeout(). It needs its own
+# request_options={"timeout": ...} passed at each call site (see
+# multi_llm_extractor.py and chain_of_thought_pipeline.py).
+socket.setdefaulttimeout(60)
 
 
 class Config:

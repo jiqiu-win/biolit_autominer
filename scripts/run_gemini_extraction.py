@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 from biolit_autominer.article_database import ArticleDatabase
 from biolit_autominer.config import config
+from biolit_autominer.dataset_export import export_dataset
 from biolit_autominer.gemini_extraction_runner import GeminiExtractionRunner
 
 
@@ -22,6 +23,11 @@ def main():
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--force", action="store_true", help="Re-extract even if already done")
+    parser.add_argument("--year-start", type=int, default=None, help="Only process articles from this year onward")
+    parser.add_argument("--year-end", type=int, default=None, help="Only process articles up to this year")
+    parser.add_argument(
+        "--workers", type=int, default=1, help="Concurrent Gemini calls (default 1 = sequential)"
+    )
     args = parser.parse_args()
 
     config.setup()
@@ -30,21 +36,33 @@ def main():
 
     pmids = args.pmids
     if args.all_unprocessed:
-        pmids = db.get_unprocessed_full_text_pmids(limit=args.limit)
+        pmids = db.get_unprocessed_full_text_pmids(
+            limit=args.limit, year_start=args.year_start, year_end=args.year_end
+        )
     elif not pmids:
-        pmids = db.get_unprocessed_full_text_pmids(limit=args.limit or 10)
+        pmids = db.get_unprocessed_full_text_pmids(
+            limit=args.limit or 10, year_start=args.year_start, year_end=args.year_end
+        )
 
     if not pmids:
         print("No articles pending Gemini extraction.")
         return 0
 
-    print(f"Gemini 2.5 extraction for {len(pmids)} article(s)...")
-    result = runner.run(pmids=pmids, force=args.force, limit=args.limit)
+    print(f"Gemini 2.5 extraction for {len(pmids)} article(s) with {args.workers} worker(s)...")
+    result = runner.run(pmids=pmids, force=args.force, limit=args.limit, max_workers=args.workers)
     print(f"Done: {len(result['processed'])} ok, {len(result['errors'])} errors")
     print(f"Output: {config.UPDATED_EXTRACTION_XLSX}")
     for err in result["errors"]:
         print(f"  ERROR PMID {err.get('pmid')}: {err.get('error')}")
-    return 1 if result["errors"] else 0
+
+    dataset_xlsx_path = export_dataset(db, config.OUTPUT_DIR / "biolit_dataset.xlsx")
+    print(f"Consolidated dataset: {dataset_xlsx_path}")
+
+    # A handful of stragglers (flaky network, one bad file) is normal at this
+    # scale and shouldn't flag the whole run FAILED in sacct -- only a high
+    # error rate indicates something systemically wrong worth stopping for.
+    error_rate = len(result["errors"]) / len(pmids) if pmids else 0
+    return 1 if error_rate > 0.2 else 0
 
 
 if __name__ == "__main__":

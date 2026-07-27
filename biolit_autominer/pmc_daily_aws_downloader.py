@@ -7,7 +7,7 @@ from .config import config
 from .incremental_sync import IncrementalSync
 from .pmc_aws_fetcher import PMCAwsFetcher
 from .pmc_download_diagnosis import build_run_diagnosis, classify_article_outcome
-from .dataset_database import sync_dataset_from_pipeline
+from .dataset_export import export_dataset
 from .gemini_extraction_runner import GeminiExtractionRunner
 from .pmc_download_registry import is_already_downloaded, organize_existing_download
 from .pmc_staging_manager import PmcStagingManager
@@ -81,6 +81,7 @@ class PmcDailyAwsDownloader:
         include_pmids=None,
         run_gemini=True,
         gemini_force=False,
+        gemini_workers=1,
     ):
         start = time.time()
         search_query = search_query or config.DEFAULT_SEARCH_QUERY
@@ -89,17 +90,25 @@ class PmcDailyAwsDownloader:
         archive_summary = self.staging.archive_staged_files(db=self.db)
 
         existing_hash_map = self.db.get_hash_map()
+        print(f"Searching PubMed (max_results={max_results})...", flush=True)
         classification = self.sync.classify_articles(
             search_query,
             existing_hash_map,
             max_results=max_results,
+        )
+        print(
+            f"Search done: {len(classification.get('all_pmids', []))} PMID(s) found "
+            f"({len(classification.get('new', []))} new, {len(classification.get('modified', []))} modified)",
+            flush=True,
         )
 
         include_pmids = [str(p) for p in (include_pmids or [])]
         candidate_pmids = self._build_candidate_pmids(classification, include_pmids)
         target_count = process_limit if process_limit is not None else None
 
+        print(f"Mapping {len(candidate_pmids)} PMID(s) to PMCID (rate-limited, may take a while)...", flush=True)
         pmcid_map = self.sync.map_pmcids_batch(candidate_pmids) if candidate_pmids else {}
+        print(f"PMCID mapping done: {len(pmcid_map)} mapped.", flush=True)
         modified_set = set(classification["modified"]) | set(include_pmids)
 
         downloaded = []
@@ -112,7 +121,13 @@ class PmcDailyAwsDownloader:
 
         aws_reachable = PMCAwsFetcher.check_aws_service_health()
 
-        for pmid in candidate_pmids:
+        for loop_index, pmid in enumerate(candidate_pmids):
+            if loop_index % 25 == 0:
+                print(
+                    f"  download progress: {loop_index}/{len(candidate_pmids)} scanned, "
+                    f"{len(downloaded)} downloaded so far",
+                    flush=True,
+                )
             if target_count is not None and len(downloaded) >= target_count:
                 break
 
@@ -152,6 +167,12 @@ class PmcDailyAwsDownloader:
                 diag = classify_article_outcome(pmid, pmcid, {}, None, error=err)
                 errors.append({"pmid": pmid, "pmcid": pmcid, "error": err, **diag})
                 article_diagnoses.append({"pmid": pmid, "pmcid": pmcid, **diag})
+                # Previously this left no trace in the DB at all -- a metadata
+                # fetch failure is a real download-side problem and should be
+                # traceable the same way a save failure is.
+                self.db.add_article(
+                    pmid, {"pmcid": pmcid, "download_status": "failed", "download_error": err}
+                )
                 continue
 
             pub_types = metadata.get("publication_types") or []
@@ -168,6 +189,15 @@ class PmcDailyAwsDownloader:
                 diag = classify_article_outcome(pmid, pmcid, availability, None, error=err)
                 errors.append({"pmid": pmid, "pmcid": pmcid, "error": err, **diag})
                 article_diagnoses.append({"pmid": pmid, "pmcid": pmcid, **diag})
+                self.db.add_article(
+                    pmid,
+                    {
+                        **metadata,
+                        "pmcid": pmcid,
+                        "download_status": "failed",
+                        "download_error": err,
+                    },
+                )
                 continue
 
             content_source = result.get("content_source", "")
@@ -185,6 +215,7 @@ class PmcDailyAwsDownloader:
                     "local_pdf_path": str(result["pdf_path"]) if result.get("pdf_path") else None,
                     "content_hash": ArticleDatabase.compute_content_hash(metadata),
                     "error_message": diag["user_message"],
+                    "download_status": "ok",
                 }
                 self.db.add_article(pmid, record)
                 abstract_only.append(
@@ -211,6 +242,7 @@ class PmcDailyAwsDownloader:
                 "local_pdf_path": str(result["pdf_path"]) if result.get("pdf_path") else None,
                 "content_hash": ArticleDatabase.compute_content_hash(metadata),
                 "error_message": None,
+                "download_status": "ok",
             }
             self.db.add_article(pmid, record)
             archive_path = organize_existing_download(
@@ -329,6 +361,7 @@ class PmcDailyAwsDownloader:
                 gemini_summary = GeminiExtractionRunner(self.db).run(
                     pmids=gemini_pmids,
                     force=gemini_force,
+                    max_workers=gemini_workers,
                 )
             else:
                 print("Gemini: no new full-text articles to extract.")
@@ -342,9 +375,8 @@ class PmcDailyAwsDownloader:
         summary["excel_path"] = str(config.EXCEL_OUTPUT)
         summary["extraction_xlsx_path"] = str(config.UPDATED_EXTRACTION_XLSX)
 
-        dataset_summary = sync_dataset_from_pipeline(self.db)
-        summary["dataset"] = dataset_summary
-        summary["dataset_xlsx_path"] = str(dataset_summary.get("dataset_xlsx", ""))
+        dataset_xlsx_path = export_dataset(self.db, config.OUTPUT_DIR / "biolit_dataset.xlsx")
+        summary["dataset_xlsx_path"] = str(dataset_xlsx_path)
         summary["gemini_extraction"] = gemini_summary
 
         print(run_diagnosis["user_message"])

@@ -21,16 +21,19 @@ class IncrementalSync:
     def _pause(self):
         time.sleep(self.sleep_time)
 
-    def search_pubmed(self, query, max_results=100):
-        try:
-            handle = Entrez.esearch(db="pubmed", term=query, retmax=max_results)
-            result = Entrez.read(handle)
-            handle.close()
-            self._pause()
-            return result.get("IdList", [])
-        except Exception as exc:
-            print(f"Search failed: {exc}")
-            return []
+    def search_pubmed(self, query, max_results=100, retries=3):
+        for attempt in range(retries):
+            try:
+                handle = Entrez.esearch(db="pubmed", term=query, retmax=max_results)
+                result = Entrez.read(handle)
+                handle.close()
+                self._pause()
+                return result.get("IdList", [])
+            except Exception as exc:
+                if attempt == retries - 1:
+                    print(f"Search failed: {exc}")
+                    return []
+                time.sleep(self.sleep_time * (attempt + 2))
 
     def fetch_metadata(self, pmid, retries=3):
         """Fetch title, authors, journal, date, and abstract from PubMed."""
@@ -88,16 +91,26 @@ class IncrementalSync:
         return [self.fetch_metadata(pmid) for pmid in pmids]
 
     def map_pmid_to_pmcid(self, pmid, retries=3):
+        """Uses efetch + PubmedData/ArticleIdList rather than elink -- elink
+        routes through a separate NCBI backend (seen on port 8064) that kept
+        resetting connections from Wahab's network even with an API key set,
+        while efetch (the same channel esearch/fetch_metadata use) stayed
+        reliable. The PMC ID is already present in the PubMed XML record."""
         for attempt in range(retries):
             try:
-                handle = Entrez.elink(dbfrom="pubmed", db="pmc", id=pmid)
-                result = Entrez.read(handle)
+                handle = Entrez.efetch(db="pubmed", id=pmid, rettype="xml", retmode="xml")
+                xml_data = handle.read()
                 handle.close()
                 self._pause()
 
-                link_sets = result[0].get("LinkSetDb") or []
-                if link_sets:
-                    return link_sets[0]["Link"][0]["Id"]
+                root = ET.fromstring(xml_data)
+                article = root.find(".//PubmedArticle")
+                if article is None:
+                    return None
+
+                pmc_id_node = article.find(".//PubmedData/ArticleIdList/ArticleId[@IdType='pmc']")
+                if pmc_id_node is not None and pmc_id_node.text:
+                    return pmc_id_node.text.strip()
                 return None
             except Exception as exc:
                 if attempt == retries - 1:

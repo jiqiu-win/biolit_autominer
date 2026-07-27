@@ -4,6 +4,8 @@ PubMed search query and Gemini extraction prompt.
 Source: Auto_pipeline_complete.ipynb — do not edit here unless the notebook is updated.
 """
 
+from datetime import datetime, timedelta
+
 BATCH_SIZE   = 200
 
 MAX_RESULTS  = 9999
@@ -90,7 +92,14 @@ topics = (
     '"liver fibrosis"[tiab]'
 )
 
-date_filter    = '2025/12/01:2026/06/06[dp]'
+# Rolling window relative to whenever this module is imported (a fresh process
+# each day via scrontab), not a fixed calendar range -- the old hardcoded dates
+# meant the daily search silently found 0 articles once "today" moved past them.
+# 30-day lookback gives buffer against PubMed indexing lag or a missed run;
+# already-downloaded articles get skipped by the existing dedup logic regardless.
+_today = datetime.now()
+_lookback_start = _today - timedelta(days=30)
+date_filter = f"{_lookback_start.strftime('%Y/%m/%d')}:{_today.strftime('%Y/%m/%d')}[dp]"
 article_filter = '"journal article"[pt]'
 lang_filter    = 'English[la]'
 
@@ -105,6 +114,23 @@ SEARCH_QUERY = (
     f"AND {date_filter} AND {article_filter} AND {lang_filter} "
     f"{exclusions}"
 )
+
+
+def build_search_query(start_date=None, end_date=None):
+    """Same query as SEARCH_QUERY, but with an explicit date range instead of
+    the rolling 30-day window -- for one-time catch-up runs covering a gap
+    (e.g. between a static backlog corpus and when the daily job started),
+    rather than permanently changing the daily job's own default behavior."""
+    if start_date is None and end_date is None:
+        return SEARCH_QUERY
+    start = start_date or (datetime.now() - timedelta(days=30)).strftime("%Y/%m/%d")
+    end = end_date or datetime.now().strftime("%Y/%m/%d")
+    custom_date_filter = f"{start}:{end}[dp]"
+    return (
+        f"{markers} AND {subjects} AND {topics} "
+        f"AND {custom_date_filter} AND {article_filter} AND {lang_filter} "
+        f"{exclusions}"
+    )
 
 EXCLUDE_TYPES = [
     "review",

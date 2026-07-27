@@ -1,5 +1,6 @@
 """Export Gemini extraction results to styled Excel in updated/."""
 
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -115,26 +116,31 @@ def _apply_extraction_style(workbook_path, sheet_name="Extractions"):
     ws = wb[sheet_name]
     gemini_col_idx = None
 
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     for col_idx in range(1, ws.max_column + 1):
         header = ws.cell(row=1, column=col_idx).value
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.alignment = header_alignment
         if header == GEMINI_RAW_COLUMN:
             gemini_col_idx = col_idx
 
         width = EXTRACTION_COLUMN_WIDTHS.get(str(header), 18)
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
-    for row_idx in range(2, ws.max_row + 1):
+    # Reuse two fixed Alignment objects instead of instantiating one per cell --
+    # at tens of thousands of rows x 17 columns, per-cell object creation (not
+    # the styling itself) was the dominant cost of this function.
+    wrap_alignment = Alignment(vertical="top", wrap_text=True)
+    nowrap_alignment = Alignment(vertical="top", wrap_text=False)
+
+    for row_idx, row_cells in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
         row_fill = ALT_ROW_FILL if row_idx % 2 == 0 else WHITE_FILL
         ws.row_dimensions[row_idx].height = DATA_ROW_HEIGHT
-        for col_idx in range(1, ws.max_column + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
+        for col_idx, cell in enumerate(row_cells, start=1):
             cell.fill = row_fill
-            wrap = col_idx != gemini_col_idx
-            cell.alignment = Alignment(vertical="top", wrap_text=wrap)
+            cell.alignment = nowrap_alignment if col_idx == gemini_col_idx else wrap_alignment
 
     ws.freeze_panes = "A2"
     wb.save(workbook_path)
@@ -155,8 +161,17 @@ def export_extraction_workbook(rows, output_path=None, replace_source_files=None
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if output_path.exists():
-        existing = pd.read_excel(output_path)
-        existing = _normalize_existing_columns(existing)
+        try:
+            existing = pd.read_excel(output_path)
+            existing = _normalize_existing_columns(existing)
+        except (zipfile.BadZipFile, ValueError):
+            # This file has no concurrent-write protection -- if another job
+            # (e.g. the daily cron) is mid-write to the same shared path when
+            # this read happens, it can catch a partial/corrupt file. That's
+            # just an auxiliary snapshot, not the source of truth (the
+            # database), so start fresh here rather than crashing the whole
+            # extraction run over it.
+            existing = pd.DataFrame(columns=EXTRACTION_COLUMNS)
     else:
         existing = pd.DataFrame(columns=EXTRACTION_COLUMNS)
 

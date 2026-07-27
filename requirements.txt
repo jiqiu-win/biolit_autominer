@@ -1,0 +1,11 @@
+python-dotenv
+pandas
+openpyxl
+biopython
+boto3
+beautifulsoup4
+pymupdf
+openai
+psycopg2-binary
+requests
+google-cloud-aiplatform

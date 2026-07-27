@@ -8,6 +8,7 @@ biolit_autominer.egg-info/
 downloads/
 downloaded/
 gemini_raw_cache/
+pmc_full_text/
 auto_pipeline_output/
 demo_dataset/
 pg_test_dataset/
