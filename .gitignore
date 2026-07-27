@@ -22,3 +22,13 @@ research_notes/
 .pgsock/
 .pglog
 .venv/
+
+# QSAR generated files (SMILES cache + model results/datasets) — rebuilt on the HPC
+qsar/cache/
+qsar/results/
+
+# Run logs
+logs/*.log
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
