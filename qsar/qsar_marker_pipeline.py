@@ -156,6 +156,11 @@ def build_full_dataset(marker, data_path=None, sheet=DATA_SHEET):
 def _load_cache():
     if SMILES_CACHE.exists():
         c = pd.read_csv(SMILES_CACHE)
+        # Empty SMILES cells come back from CSV as NaN (float). Coerce to "" so a
+        # float NaN never flows downstream to RDKit -- MolFromSmiles(float) segfaults
+        # on some Linux rdkit builds (raises TypeError on macOS, hence CI missed it).
+        # fillna BEFORE astype, since str(NaN) would otherwise become the string "nan".
+        c["smiles"] = c["smiles"].fillna("").astype(str)
         return dict(zip(c["chemical"], c["smiles"]))
     return {}
 
@@ -272,7 +277,7 @@ def mol_to_graph(smi, label_idx):
     from torch_geometric.data import Data
 
     Chem, _ = _rdkit()
-    mol = Chem.MolFromSmiles(smi)
+    mol = Chem.MolFromSmiles(str(smi))   # str() guard: a raw float would segfault RDKit
     if mol is None or mol.GetNumAtoms() == 0:
         return None
     x = torch.tensor([atom_feat(a) for a in mol.GetAtoms()], dtype=torch.float)
@@ -297,7 +302,7 @@ def morgan_fp(smi, n_bits=2048, radius=2):
     import numpy as np
     from rdkit.Chem import AllChem, DataStructs
     Chem, _ = _rdkit()
-    mol = Chem.MolFromSmiles(smi)
+    mol = Chem.MolFromSmiles(str(smi))   # str() guard: a raw float would segfault RDKit
     if mol is None:
         return None
     bv = AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
@@ -604,7 +609,9 @@ def main():
     # 2) name -> SMILES -------------------------------------------------------
     smi_map = resolve_smiles(full["chemical"].tolist(), sleep=args.smiles_sleep)
     full["smiles"] = full["chemical"].map(smi_map)
-    full = full[full["smiles"].astype(bool)].copy()
+    # Keep only non-empty *string* SMILES. NaN is truthy, so bool(NaN)==True would
+    # let unresolved names slip past a plain .astype(bool) filter and reach RDKit.
+    full = full[full["smiles"].map(lambda s: isinstance(s, str) and s.strip() != "")].copy()
 
     # 3) canonicalize + drop invalid + dedup ----------------------------------
     full["csmi"] = full["smiles"].map(canonicalize)
