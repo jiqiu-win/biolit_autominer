@@ -449,8 +449,11 @@ def evaluate_multiclass(y_true, y_prob, name, class_names):
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_prob).argmax(1)
     try:
-        auc = roc_auc_score(y_true, y_prob, multi_class="ovr", average="macro",
-                            labels=list(range(len(class_names))))
+        if len(class_names) == 2:                          # binary: AUC on the positive class
+            auc = roc_auc_score(y_true, np.asarray(y_prob)[:, 1])
+        else:
+            auc = roc_auc_score(y_true, y_prob, multi_class="ovr", average="macro",
+                                labels=list(range(len(class_names))))
     except Exception:
         auc = np.nan
     per_class_f1 = f1_score(y_true, y_pred, average=None,
@@ -593,6 +596,11 @@ def main():
                         help=f"Graph-model hidden size (default {GT_HIDDEN}; try 64 for small data).")
     parser.add_argument("--gt-layers", type=int, default=GT_LAYERS,
                         help=f"Graph-model depth (default {GT_LAYERS}; try 1-2 for small data).")
+    parser.add_argument("--binary", action="store_true",
+                        help="E1: 2-class task -- drop 'no significant change', keep only "
+                             "increase vs decrease (cleaner, higher-signal task).")
+    parser.add_argument("--high-confidence", action="store_true",
+                        help="E2: train only on chemicals with support >= 2 (cleaner labels).")
     args = parser.parse_args()
     selected = set(args.models) if args.models else set(ALL_MODELS)
 
@@ -601,6 +609,21 @@ def main():
 
     # 1) labels ---------------------------------------------------------------
     full = build_full_dataset(args.marker, data_path=args.data, sheet=args.sheet)
+
+    # E2: high-confidence subset -- keep only chemicals backed by >= 2 articles
+    if args.high_confidence:
+        n0 = len(full)
+        full = full[full["support"] >= 2].reset_index(drop=True)
+        print(f"[high-confidence] kept {len(full)}/{n0} chemicals (support >= 2)")
+
+    # E1: binary task -- drop the 'no significant change' class
+    if args.binary:
+        n0 = len(full)
+        full = full[full["label"] != "no significant change"].reset_index(drop=True)
+        print(f"[binary] kept {len(full)}/{n0} chemicals (increase vs decrease only)")
+
+    if len(full) == 0:
+        raise ValueError("No chemicals left after filtering -- loosen --binary / --high-confidence.")
 
     if args.limit and args.limit < len(full):
         full = full.sample(n=args.limit, random_state=SEED).reset_index(drop=True)
