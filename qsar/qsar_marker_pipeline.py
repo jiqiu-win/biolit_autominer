@@ -601,6 +601,10 @@ def main():
                              "increase vs decrease (cleaner, higher-signal task).")
     parser.add_argument("--high-confidence", action="store_true",
                         help="E2: train only on chemicals with support >= 2 (cleaner labels).")
+    parser.add_argument("--train-size", type=int, default=None,
+                        help="Learning curve: subsample the TRAINING set to this many "
+                             "chemicals (the test set is kept fixed). Vary it to show that "
+                             "more data -> better models.")
     args = parser.parse_args()
     selected = set(args.models) if args.models else set(ALL_MODELS)
 
@@ -677,6 +681,10 @@ def main():
 
     pool_idx, test_idx = strat_split(idx, y, args.test_size)
     tr_idx, val_idx = strat_split(pool_idx, y[pool_idx], args.val_size)
+    # learning curve: shrink the TRAINING set to a fixed size; test set stays the same
+    if args.train_size and args.train_size < len(tr_idx):
+        tr_idx, _ = strat_split(tr_idx, y[tr_idx], len(tr_idx) - args.train_size)
+        print(f"[train-size] training set subsampled to {len(tr_idx)} (test set unchanged)")
     print(f"[split] train={len(tr_idx)}  val={len(val_idx)}  test={len(test_idx)}")
 
     # 5) build graphs ---------------------------------------------------------
