@@ -32,7 +32,7 @@ git push origin main
 
 | Secret | Value |
 |--------|--------|
-| `NCBI_EMAIL` | `jq2430@columbia.edu` |
+| `NCBI_EMAIL` | `anonymous@example.com` |
 | `NCBI_API_KEY` | your NCBI API key |
 
 Optional — save outputs to **your** AWS S3 bucket:
@@ -91,7 +91,7 @@ Permissions: `s3:GetObject`, `s3:PutObject` on your bucket; basic Lambda executi
 - Memory: 512 MB+
 - Environment:
   ```
-  NCBI_EMAIL=jq2430@columbia.edu
+  NCBI_EMAIL=anonymous@example.com
   NCBI_API_KEY=...
   BIOLIT_S3_BUCKET=biolit-autominer-jqiu
   BIOLIT_S3_PREFIX=biolit_autominer
