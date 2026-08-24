@@ -30,7 +30,7 @@ socket.setdefaulttimeout(60)
 
 
 class Config:
-    NCBI_EMAIL = os.getenv("NCBI_EMAIL", "jq2430@columbia.edu")
+    NCBI_EMAIL = os.getenv("NCBI_EMAIL", "anonymous@example.com")
     NCBI_API_KEY = os.getenv("NCBI_API_KEY")
     NCBI_SLEEP_TIME = 0.1 if NCBI_API_KEY else 0.34
 
