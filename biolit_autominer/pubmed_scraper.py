@@ -232,7 +232,7 @@ class PubMedScraper:
     def __init__(self, sleep_time=None):
         self.sleep_time = sleep_time if sleep_time is not None else config.NCBI_SLEEP_TIME
         self.headers = {
-            "User-Agent": "BiolitAutoMiner/1.0 (research; mailto:jq2430@columbia.edu)"
+            "User-Agent": "BiolitAutoMiner/1.0 (research; mailto:anonymous@example.com)"
         }
         self._robots = None
         self._robots_loaded = False
