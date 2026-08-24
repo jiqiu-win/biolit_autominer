@@ -11,7 +11,7 @@
 set -euo pipefail
 
 # --- edit these two ---------------------------------------------------------
-DATA="/Users/qiuji/Downloads/biolit_dataset (6).xlsx"   # dataset file
+DATA="DATA="data/biolit_dataset.xlsx""   # dataset file
 MARKER="ALT"                                             # marker to model
 # ---------------------------------------------------------------------------
 
