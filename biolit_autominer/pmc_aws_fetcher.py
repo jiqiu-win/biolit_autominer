@@ -50,7 +50,7 @@ class PMCAwsFetcher:
         self.session = requests.Session()
         self.session.headers.update(
             {
-                "User-Agent": "BiolitAutoMiner/1.0 (research; mailto:jq2430@columbia.edu)",
+                "User-Agent": "BiolitAutoMiner/1.0 (research; mailto:anonymous@example.com)",
             }
         )
 
