@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "biolit_autominer"
 version = "1.0.0"
 description = "Automated Biomedical Literature Mining Pipeline"
-authors = [{name = "Ji Qiu", email = "jq2430@columbia.edu"}]
+authors = [{name = "Anonymous", email = "Anonymous@example.com"}]
 license = {text = "MIT"}
 requires-python = ">=3.7"
 dependencies = [
