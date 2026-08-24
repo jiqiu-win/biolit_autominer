@@ -1,7 +1,7 @@
 """
 QSAR pipeline — predict a hepatotoxicity marker's Result from molecular structure.
 
-Mirrors Yamini's caspase notebook
+Mirrors A's caspase notebook
 (qsar_project_dili/qsar_prediction/caspase/QSAR_Caspase_GraphTransformers.ipynb),
 adapted for our literature-extracted dataset:
 
@@ -43,7 +43,7 @@ import pandas as pd
 # ----------------------------------------------------------------------------- #
 HERE = Path(__file__).resolve().parent
 # Up-to-date biolit dataset (Findings sheet). Override on the HPC with --data.
-DATA_XLSX = Path("/Users/qiuji/Downloads/biolit_dataset (6).xlsx")
+DATA_XLSX = Path("data/biolit_dataset.xlsx")
 DATA_SHEET = "Findings"
 SMILES_CACHE = HERE / "cache" / "name_to_smiles.csv"   # shared across all markers
 RESULTS_DIR = HERE / "results"
