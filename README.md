@@ -1,6 +1,6 @@
 # Biolit AutoMiner
 
-Automated Biomedical Literature Mining Pipeline for IEEE 2026 Big Data Conference research.
+Automated Biomedical Literature Mining Pipeline for 2027 WSDM Conference research.
 
 ## Installation
 
