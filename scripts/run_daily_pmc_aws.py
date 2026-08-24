@@ -13,7 +13,7 @@ Also writes:
 
 Schedule on macOS (cron — fixed daily time, default 9:00 AM):
   crontab -e
-  0 9 * * * cd /Users/qiuji/Downloads/biolit_autominer && /usr/bin/python3 scripts/run_daily_pmc_aws.py >> logs/daily_pmc_aws.log 2>&1
+  0 9 * * * cd /path/to/biolit_autominer && /usr/bin/python3 scripts/run_daily_pmc_aws.py >> logs/daily_pmc_aws.log 2>&1
 
 Or run manually anytime (no need to wait until tomorrow):
   python scripts/run_daily_pmc_aws.py
