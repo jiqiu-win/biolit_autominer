@@ -62,3 +62,6 @@ Gemini output format (`.txt`, one bracket entry per line):
 ## Reproducibility
 
 Every run uses `run_pipeline.py` and writes sync metrics to `sync_history.json`.
+
+## Supplementary Materials
+Search Keywords, Prompts and sec4.3_extraction_quality_validation.xlsx files are in this folder
