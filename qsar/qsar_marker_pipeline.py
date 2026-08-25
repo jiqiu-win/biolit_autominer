@@ -5,9 +5,9 @@ Mirrors A's caspase notebook
 (qsar_project_dili/qsar_prediction/caspase/QSAR_Caspase_GraphTransformers.ipynb),
 adapted for our literature-extracted dataset:
 
-  * chemical NAME  -> SMILES  (via PubChem; Yamini's PubChem data already had SMILES)
+  * chemical NAME  -> SMILES  (via PubChem; A's PubChem data already had SMILES)
   * 3-class label  (increase / decrease / no significant change) with CrossEntropyLoss
-                    (Yamini's task was binary Active/Inactive with BCE)
+                    (A's task was binary Active/Inactive with BCE)
   * class weights instead of 1:1 downsampling (downsampling doesn't extend to 3 classes)
   * ONE model per marker  -> set --marker (default ALT); reusing for AST/others is a 1-word change
 
