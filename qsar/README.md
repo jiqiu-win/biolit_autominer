@@ -3,11 +3,11 @@
 Predict a hepatotoxicity **marker's Result** (3-class: *increase / decrease / no significant change*)
 from a chemical's **molecular structure**, for one marker at a time.
 
-Mirrors Yamini's caspase notebook
+Mirrors A's caspase notebook
 (`qsar_project_dili/qsar_prediction/caspase/QSAR_Caspase_GraphTransformers.ipynb`),
 adapted to our literature-extracted data:
 
-| Difference from Yamini | Why |
+| Difference from A | Why |
 |---|---|
 | chemical **name → SMILES** via PubChem | her PubChem data already had SMILES |
 | **3-class** + `CrossEntropyLoss` | her task was binary (Active/Inactive) |
